@@ -25,7 +25,10 @@
           <div class="kicker">GBAS GBOS!</div>
           <h1 class="modes-title">CHOOSE YOUR FIGHT</h1>
         </div>
-        <div class="chip-saved" id="save-chip"><i></i><span>Saved on this device</span></div>
+        <div class="head-chips">
+          <div class="chip-saved chip-player hidden" id="ll-chip"><img alt="" id="ll-avatar"><span id="ll-name"></span></div>
+          <div class="chip-saved" id="save-chip"><i></i><span>Saved on this device</span></div>
+        </div>
       </header>
       <div class="mode-cards">
         <button class="mode-card" id="mode-cpu">
@@ -75,6 +78,7 @@
       <div class="story-note" id="story-note"></div>
       <div class="story-bar">
         <button class="btn-ghost" id="story-back">◀ MODES</button>
+        <button class="btn-ghost hidden" id="story-board">REP BOARD</button>
         <button class="btn-ghost" id="story-save">SAVE CODE</button>
         <button class="btn-primary" id="story-go">CONTINUE</button>
       </div>
@@ -135,6 +139,16 @@
         <button class="btn-ghost" id="save-load">LOAD CODE</button>
         <button class="btn-primary" id="save-close">DONE</button>
       </div>
+    </div>
+  </section>
+
+  <section id="board-dialog" class="screen dim hidden">
+    <div class="card save-card board-card">
+      <h2>STREET REP</h2>
+      <p class="muted-p">The top 50 in Lagos Life. Your best Street Rep counts, and it updates after every Story fight.</p>
+      <ol class="board" id="board-list"></ol>
+      <div class="board-me" id="board-me"></div>
+      <div class="ch-actions"><button class="btn-primary" id="board-close">DONE</button></div>
     </div>
   </section>
 
