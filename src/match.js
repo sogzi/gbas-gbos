@@ -5,9 +5,11 @@ import { sfx } from './audio.js';
 const NEUTRAL_X = 2.4; // how far the standing fighter backs off during a count
 
 export class Match {
-  constructor({ p1, p2, ref, cpu, input, hud, onEnd }) {
-    Object.assign(this, { p1, p2, ref, cpu, input, hud, onEnd });
+  constructor({ p1, p2, ref, cpu, input, hud, onEnd, fx, arena }) {
+    Object.assign(this, { p1, p2, ref, cpu, input, hud, onEnd, fx, arena });
     this.shake = 0;
+    this.hitStop = 0;
+    this.kick = 0; // camera nudge along the punch
     this.paused = false;
     input.onAny = (k) => this._mash(k);
   }
@@ -49,29 +51,59 @@ export class Match {
   }
 
   // ---------- combat resolution ----------
-  resolve(a, d, m) {
-    const gap = Math.abs(a.x - d.x);
-    const isP1 = a === this.p1;
-    if (gap > m.reach || d.state === 'down' || d.state === 'getup' || this.phase !== 'fight') {
+  // Called every frame of a punch's travel: sweep the punching glove against the opponent.
+  contact(a, d, m) {
+    if (this.phase !== 'fight' || d.state === 'down' || d.state === 'getup') {
+      m.done = true;
       return;
     }
+    const late = a.stateT > m.hitAt + 0.12 * (m.dur / a.clipLen(m.clip));
     if (d.isSlipping) {
-      d.sig = Math.min(3, d.sig + 0.3);
-      this.hud.say('SLIPPED!', '', 650);
+      // slipped heads simply aren't there; count it once the punch has passed
+      if (late) {
+        m.done = true;
+        d.sig = Math.min(3, d.sig + 0.3);
+        this.hud.say('SLIPPED!', '', 650);
+      }
       return;
     }
-    if (d.isBlocking) {
+    const hit = d.body.contact(a.body, m.hand, d.isBlocking);
+    if (hit) {
+      m.done = true;
+      this.resolve(a, d, m, hit);
+    } else if (late) {
+      m.done = true; // whiffed
+    }
+  }
+
+  resolve(a, d, m, hit) {
+    const isP1 = a === this.p1;
+    const vel = a.body.gloveVel[m.hand].clone();
+    if (vel.lengthSq() < 1) vel.set(a.facing * 4, 0, 0);
+    const dir = vel.clone().normalize();
+    const blocked = hit.zone === 'guard' || (d.isBlocking && hit.zone === 'head' && m.kind !== 'uppercut');
+    if (blocked) {
       const dmg = m.dmg * a.powerMul * m.chip * m.blockMul * d.defMul;
       d.hp = Math.max(1, d.hp - dmg);
       d.stamina = Math.max(0, d.stamina - m.stam * 0.9);
-      d.vx += -d.facing * 0.6;
+      // the guard soaks it: both fighters bounce apart a little, the arms and head jolt
+      d.vx += -d.facing * (0.5 + m.dmg * 0.06) * (78 / d.mass);
+      a.vx += -a.facing * 0.35 * (78 / a.mass);
+      d.body.impulse('head', hit.point, vel, 1.2 + m.dmg * 0.15);
       a.sig = Math.min(3, a.sig + 0.04);
       sfx.block();
+      this.fx?.spawn(hit.point, dir, 'guard', 0.5);
+      this.hitStop = Math.max(this.hitStop, 0.035);
       this.shake = Math.max(this.shake, 0.02);
       return;
     }
     const counter = d.state === 'punch';
-    let dmg = m.dmg * a.powerMul * m.dmgMul * d.defMul * (counter ? 1.25 : 1);
+    const body = hit.zone === 'body';
+    if (body) {
+      m = { ...m, react: 'HitBody' };
+      d.stamina = Math.max(0, d.stamina - 6 - m.dmg); // body shots take the legs and the wind
+    }
+    let dmg = m.dmg * a.powerMul * m.dmgMul * d.defMul * (counter ? 1.25 : 1) * (body ? 0.85 : 1);
     const now = a.time;
     a.combo = now - a.lastLanded < 1.1 ? a.combo + 1 : 1;
     a.lastLanded = now;
@@ -84,7 +116,12 @@ export class Match {
     d.sig = Math.min(3, d.sig + 0.05);
     this.lastBlow = { by: a, sig: m.sig };
     const res = d.takeHit(m, dmg, a);
+    // the head (or torso) is thrown by the glove: angular impulse from where and how it landed
+    d.body.impulse(hit.zone, hit.point, vel, 3 + dmg * 0.75);
     sfx.punch(dmg / 6);
+    this.fx?.spawn(hit.point, dir, hit.zone, Math.min(1.6, dmg / 5));
+    this.hitStop = Math.max(this.hitStop, Math.min(0.13, 0.045 + dmg * 0.008));
+    this.kick = a.facing * Math.min(0.12, 0.02 + dmg * 0.008);
     this.shake = Math.max(this.shake, 0.03 + dmg * 0.006);
 
     if (m.sig && (a.queue.length === 3 || m.stun)) this.hud.say(m.sig.toUpperCase() + '!', a.data.firstName.toUpperCase(), 1200);
@@ -97,6 +134,8 @@ export class Match {
 
   _knockdown(d, a) {
     d.knockDown();
+    // dust off the canvas when the body lands
+    setTimeout(() => this.fx?.spawn({ x: d.body.hipP.x, y: 0.05, z: d.body.hipP.z }, { x: 0, y: 0, z: 0 }, 'dust', 1), 680);
     d.kdRound++;
     a.stats.knockdownsScored++;
     this.downed = d;
@@ -135,10 +174,17 @@ export class Match {
       p1.moveIntent = p2.moveIntent = 0;
     }
 
-    p1.update(dt, p2, this);
-    p2.update(dt, p1, this);
-    this._separate();
+    if (this.hitStop > 0) {
+      // freeze both fighters for a beat on impact so the hit reads
+      this.hitStop -= dt;
+    } else {
+      p1.update(dt, p2, this);
+      p2.update(dt, p1, this);
+      this._separate(dt);
+    }
     ref.update(dt);
+    this.fx?.update(dt);
+    this.arena?.ropes(p1, p2, dt);
 
     switch (this.phase) {
       case 'intro':
@@ -217,6 +263,7 @@ export class Match {
     hud.side(1, p1);
     hud.side(2, p2);
     this.shake *= Math.exp(-dt * 10);
+    this.kick *= Math.exp(-dt * 12);
   }
 
   _drive(f, move, block, presses) {
@@ -239,17 +286,27 @@ export class Match {
     const { p1, p2 } = this;
     for (const f of [p1, p2]) f.clamp();
     const down = p1.state === 'down' || p2.state === 'down' || p1.state === 'getup' || p2.state === 'getup';
-    if (down) return;
-    const gap = p2.x - p1.x;
-    if (gap < RULES.minGap) {
-      const push = (RULES.minGap - gap) / 2;
-      p1.x -= push;
-      p2.x += push;
-      for (const f of [p1, p2]) f.clamp();
-      if (p2.x - p1.x < RULES.minGap) {
-        // pinned on the ropes: move the free fighter instead
-        if (p1.x <= -RULES.ringHalf + 0.01) p2.x = p1.x + RULES.minGap;
-        else p1.x = p2.x - RULES.minGap;
+    if (!down) {
+      const gap = p2.x - p1.x;
+      if (gap < RULES.minGap) {
+        // bodies collide: split the overlap by inverse mass, so the heavier fighter gives less ground
+        const w1 = 1 / p1.mass, w2 = 1 / p2.mass;
+        const over = RULES.minGap - gap;
+        p1.x -= over * w1 / (w1 + w2);
+        p2.x += over * w2 / (w1 + w2);
+        // and share momentum when they walk into each other (inelastic)
+        const v1 = p1.v + p1.vx, v2 = p2.v + p2.vx;
+        if (v1 > v2) {
+          const vc = (p1.mass * v1 + p2.mass * v2) / (p1.mass + p2.mass);
+          p1.vx += vc - v1;
+          p2.vx += vc - v2;
+        }
+        for (const f of [p1, p2]) f.clamp();
+        if (p2.x - p1.x < RULES.minGap * 0.9) {
+          // pinned on the ropes: move the free fighter instead
+          if (p1.x <= -RULES.ringHalf) p2.x = p1.x + RULES.minGap * 0.9;
+          else p1.x = p2.x - RULES.minGap * 0.9;
+        }
       }
     }
     p1.root.position.x = p1.x;

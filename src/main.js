@@ -9,6 +9,7 @@ import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { Match } from './match.js';
 import { unlockAudio } from './audio.js';
+import { Impacts } from './physics.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -53,8 +54,12 @@ let mode = 'menu';
 const loader = new GLTFLoader();
 const load = (id) => new Promise((res, rej) => loader.load(`/models/${id}.glb`, res, undefined, rej));
 
+let arena = null;
+let fx = null;
+
 async function boot() {
-  buildArena(scene);
+  arena = buildArena(scene);
+  fx = new Impacts(scene);
   try {
     const [d, b, r] = await Promise.all([load('dayo'), load('bisi'), load('ref')]);
     models.dayo = d;
@@ -155,7 +160,7 @@ function startFight() {
   const [p1, p2] = fighters;
   hud.setNames(p1.data, p2.data);
   const cpu = new CPU(p2, p1, level);
-  match = new Match({ p1, p2, ref, cpu, input, hud, onEnd: showResults });
+  match = new Match({ p1, p2, ref, cpu, input, hud, onEnd: showResults, fx, arena });
   // ?autoplay lets the CPU box for P1 too (attract mode and automated tests)
   if (new URLSearchParams(location.search).has('autoplay')) match.autoP1 = new CPU(p1, p2, level);
   match.start();
@@ -240,11 +245,13 @@ function updateCamera(dt) {
     mid = (fighters[0].x + fighters[1].x) / 2;
     gap = Math.abs(fighters[1].x - fighters[0].x);
   }
-  // pull back on narrow (portrait) screens so both fighters stay in frame
+  // on narrow (portrait) screens pull back just enough to fit both fighters across
+  const halfW = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+  const fit = (gap + 1.8) / 2 / halfW;
+  let dist = Math.max(4.1 + gap * 0.55, fit);
   const narrow = Math.max(1, 1.5 / camera.aspect);
-  let dist = (4.1 + gap * 0.55) * narrow;
-  let height = 1.55 + (narrow - 1) * 0.6;
-  let lookY = 1.0 - (narrow - 1) * 0.12;
+  let height = 1.55 + Math.min(1.2, (dist - 4.6) * 0.12);
+  let lookY = 1.0 - Math.min(0.3, (narrow - 1) * 0.12);
   let x = mid * 0.85;
   if (mode === 'menu') {
     // slow orbit behind the menu
@@ -256,6 +263,7 @@ function updateCamera(dt) {
   camPos.lerp(new THREE.Vector3(x, height, dist), Math.min(1, dt * 3));
   camLook.lerp(new THREE.Vector3(mode === 'menu' ? 0 : mid, lookY, 0), Math.min(1, dt * 4));
   camera.position.copy(camPos);
+  if (match?.kick) camera.position.x += match.kick;
   const s = match?.shake ?? 0;
   if (s > 0.001) camera.position.add(new THREE.Vector3((Math.random() - 0.5) * s, (Math.random() - 0.5) * s, 0));
   camera.lookAt(camLook);
@@ -266,7 +274,7 @@ function frame() {
   if (mode === 'fight' || mode === 'results') {
     if (match) match.update(mode === 'results' ? dt : dt);
   } else if (fighters) {
-    fighters.forEach((f) => f.mixer.update(dt));
+    fighters.forEach((f) => f.animate(dt));
     ref?.update(dt);
   }
   updateCamera(dt);

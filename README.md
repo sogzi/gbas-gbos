@@ -36,7 +36,16 @@ Import the repo in Vercel. It detects Vite on its own: the build command is `npm
 | Signature | J + L together | SIG |
 | Pause | Esc or P | ❚❚ |
 
-When you're knocked down, mash any punch to get up sooner. Touch controls appear on phones and tablets. The game plays in portrait too, but landscape gives the best view.
+When you're knocked down, mash any punch to get up sooner. Touch controls appear on phones and tablets. The game plays in portrait too, but landscape gives the best view. On iPhone, Share › Add to Home Screen runs it full screen without the browser bars.
+
+### Boxing physics
+
+Animation drives the bodies and physics layers on top. It is not a full ragdoll.
+
+- **Contact:** a punch only counts when the glove actually touches. The glove's path each frame is swept against the opponent's head, body, and guard (when blocking). Two-bone arm IK aims the punch at the head, and the target locks halfway through, so slipping or stepping back makes it miss. Reach is measured, not made up: Dayo's jab lands at about 1.18 m, Bisi's at 0.94 m.
+- **Hit reactions:** the head and torso are thrown by an angular impulse from where and how hard the glove landed (r × v). Damped springs then settle them back. There is a short hit-stop on impact, sweat spray, and dust when someone hits the canvas.
+- **Weight:** footwork accelerates instead of snapping to speed. Fighters have mass, so knockback, clinch pushing and momentum all favour the heavier one. The ropes are springs that send you back in and visibly give.
+- **Slugger trait:** Bisi walks through jabs, and through light shots while she's punching.
 
 ## How it's built
 
@@ -47,6 +56,7 @@ When you're knocked down, mash any punch to get up sooner. Touch controls appear
   - `ai.js`: CPU
   - `referee.js`, `arena.js`: the ring and the Lagos street
   - `input.js`: keyboard and touch
+  - `physics.js`: hit volumes, glove sweeps, arm IK, hit-reaction springs, impact particles
   - `hud.js`, `audio.js`: synthesised bell and punches
 - Fighter numbers come from `design/fighters.json` in the handoff and live in `src/data.js`. Damage, reach and round length are tuned there too.
 - **Models** are in `public/models/*.glb`. Each is about 2.3 MB, rigged on a 53-bone game skeleton with baked clips:

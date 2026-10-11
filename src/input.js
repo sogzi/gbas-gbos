@@ -124,5 +124,21 @@ export class Input {
     root.addEventListener('pointerup', up);
     root.addEventListener('pointercancel', up);
     root.addEventListener('contextmenu', (e) => e.preventDefault());
+    // iOS Safari ignores user-scalable=no: stop its double-tap and pinch zoom, which
+    // otherwise kick in when you hammer the punch buttons and push the HUD off screen
+    root.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    let lastEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = performance.now();
+      if (now - lastEnd < 350 && document.body.classList.contains('fighting')) e.preventDefault();
+      lastEnd = now;
+    }, { passive: false });
+    document.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 1 || document.body.classList.contains('fighting')) e.preventDefault();
+    }, { passive: false });
+    for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+    }
+    document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
   }
 }

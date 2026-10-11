@@ -156,21 +156,55 @@ export function buildArena(scene) {
     root.add(pad);
   }
   const ropeMats = [std(COLORS.red, 0.4), std(COLORS.chalk, 0.5), std(COLORS.blue, 0.4)];
+  const UP = new THREE.Vector3(0, 1, 0);
+  const placeRope = (mesh, a, b) => {
+    mesh.position.copy(a).add(b).multiplyScalar(0.5);
+    mesh.scale.y = a.distanceTo(b);
+    mesh.quaternion.setFromUnitVectors(UP, _d.copy(b).sub(a).normalize());
+  };
+  const _d = new THREE.Vector3();
+  // the side ropes (x = +/-P) give when a fighter is driven into them: two segments meeting
+  // at a point that moves with the fighter
+  const sideRopes = { '-1': [], '1': [] };
   [0.48, 0.86, 1.24].forEach((y, i) => {
-    const pts = [[-P, -P], [P, -P], [P, P], [-P, P], [-P, -P]];
-    for (let k = 0; k < 4; k++) {
-      const a = new THREE.Vector3(pts[k][0], y, pts[k][1]);
-      const b = new THREE.Vector3(pts[k + 1][0], y, pts[k + 1][1]);
-      // leave the near rope out of the camera's way
-      if (a.z > 0 && b.z > 0) continue;
-      const len = a.distanceTo(b);
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, len, 10), ropeMats[i]);
-      rope.position.copy(a).add(b).multiplyScalar(0.5);
-      rope.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-      rope.castShadow = true;
-      root.add(rope);
+    // back rope
+    const back = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 10), ropeMats[i]);
+    placeRope(back, new THREE.Vector3(-P, y, -P), new THREE.Vector3(P, y, -P));
+    back.castShadow = true;
+    root.add(back);
+    for (const sx of [-1, 1]) {
+      const segs = [0, 1].map(() => {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1, 10), ropeMats[i]);
+        m.castShadow = true;
+        root.add(m);
+        return m;
+      });
+      const r = { y, segs, push: 0, a: new THREE.Vector3(sx * P, y, -P), b: new THREE.Vector3(sx * P, y, P), mid: new THREE.Vector3() };
+      sideRopes[sx].push(r);
+      r.mid.set(sx * P, y, 0);
+      placeRope(segs[0], r.a, r.mid);
+      placeRope(segs[1], r.mid, r.b);
     }
   });
+  // called each frame with the fighters: rope give follows how far past the edge they are
+  const ropes = (...fighters) => {
+    const dt = typeof fighters[fighters.length - 1] === 'number' ? fighters.pop() : 1 / 60;
+    for (const sx of [-1, 1]) {
+      let depth = 0;
+      for (const f of fighters) {
+        if (Math.sign(f.x) === sx) depth = Math.max(depth, Math.abs(f.x) + 0.42 - P);
+      }
+      const target = Math.max(0, Math.min(0.35, depth));
+      sideRopes[sx].forEach((r, i) => {
+        // higher ropes give more: that's where the shoulders are
+        const t = target * (0.45 + i * 0.35);
+        r.push += (t - r.push) * Math.min(1, dt * (t > r.push ? 30 : 9));
+        r.mid.set(sx * (P + r.push), r.y, 0);
+        placeRope(r.segs[0], r.a, r.mid);
+        placeRope(r.segs[1], r.mid, r.b);
+      });
+    }
+  };
   // near side: short rope stubs only at the posts so the frame still reads as a ring
   for (const x of [-P, P]) {
     [0.48, 0.86, 1.24].forEach((y, i) => {
@@ -289,5 +323,5 @@ export function buildArena(scene) {
   rim.position.set(6, 4, -6);
   scene.add(rim);
 
-  return { root, sun };
+  return { root, sun, ropes };
 }
