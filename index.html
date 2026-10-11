@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#13110F" />
+  <title>Gbas Gbos! Quick Match</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <!-- ===== Title / fighter select ===== -->
+  <section id="menu" class="screen">
+    <div class="stripe"></div>
+    <div class="menu-inner">
+      <header class="brand">
+        <div class="kicker">LAGOS FIGHT NIGHT</div>
+        <h1>GBAS GBOS!</h1>
+        <div class="sub">Quick match · 3 rounds · vs CPU</div>
+      </header>
+      <div class="pick-label">CHOOSE YOUR FIGHTER <span class="muted">(CPU takes the other)</span></div>
+      <div class="picks" id="picks"></div>
+      <div class="row">
+        <div class="seg" id="difficulty" role="radiogroup" aria-label="CPU difficulty">
+          <button data-v="easy" role="radio">EASY</button>
+          <button data-v="normal" role="radio" class="on">NORMAL</button>
+          <button data-v="hard" role="radio">HARD</button>
+        </div>
+        <button id="fight-btn" class="btn-primary">FIGHT!</button>
+      </div>
+      <div class="legend legend-menu">
+        <span><kbd>A</kbd><kbd>D</kbd> Move</span>
+        <span><kbd>J</kbd> Jab</span>
+        <span><kbd>K</kbd> Hook</span>
+        <span><kbd>L</kbd> Uppercut</span>
+        <span><kbd>Space</kbd> Block</span>
+        <span><kbd>Shift</kbd> Slip</span>
+        <span><kbd class="y">J + L</kbd> Signature</span>
+      </div>
+    </div>
+    <div id="loading" class="loading">Loading fighters…</div>
+  </section>
+
+  <!-- ===== Fight HUD ===== -->
+  <section id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="side p1">
+        <div class="name"><span><b class="red">P1</b> · <span id="n1"></span></span><span id="hp1t">100</span></div>
+        <div class="hp" role="img" aria-label="Player 1 health"><i class="trail" id="tr1"></i><i class="fill" id="hp1"></i></div>
+        <div class="sub-row">
+          <div class="st"><i id="st1"></i></div>
+          <div class="pips" id="pip1"><i></i><i></i><i></i></div>
+        </div>
+        <div class="dots" id="dots1"><i></i><i></i></div>
+      </div>
+      <div class="clock">
+        <div id="round-l">ROUND 1</div>
+        <div id="clock-t">1:00</div>
+      </div>
+      <div class="side p2">
+        <div class="name"><span id="hp2t">100</span><span><span id="n2"></span> · <b class="blue">CPU</b></span></div>
+        <div class="hp" role="img" aria-label="CPU health"><i class="trail" id="tr2"></i><i class="fill" id="hp2"></i></div>
+        <div class="sub-row">
+          <div class="st"><i id="st2"></i></div>
+          <div class="pips" id="pip2"><i></i><i></i><i></i></div>
+        </div>
+        <div class="dots" id="dots2"><i></i><i></i></div>
+      </div>
+    </div>
+    <button id="pause-btn" class="icon-btn" aria-label="Pause">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F4EEE3" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+    </button>
+    <div id="callout" class="callout"><div class="big"></div><div class="tag"></div></div>
+    <div id="count" class="count"></div>
+    <div id="banner" class="banner"></div>
+    <div class="legend legend-fight">
+      <span><kbd>A</kbd><kbd>D</kbd> Move</span>
+      <span><kbd>J</kbd> Jab</span>
+      <span><kbd>K</kbd> Hook</span>
+      <span><kbd>L</kbd> Uppercut</span>
+      <span><kbd>Space</kbd> Block</span>
+      <span><kbd>Shift</kbd> Slip</span>
+      <span><kbd class="y">J + L</kbd> Signature</span>
+    </div>
+  </section>
+
+  <!-- ===== Touch controls ===== -->
+  <section id="touch" class="hidden" aria-hidden="true">
+    <div class="pad-l">
+      <button data-k="left" class="t-btn t-move">◀</button>
+      <button data-k="right" class="t-btn t-move">▶</button>
+    </div>
+    <div class="pad-r">
+      <button data-k="sig" class="t-btn t-sig">SIG</button>
+      <button data-k="upper" class="t-btn">UPPER</button>
+      <button data-k="hook" class="t-btn">HOOK</button>
+      <button data-k="slip" class="t-btn t-def">SLIP</button>
+      <button data-k="block" class="t-btn t-def">BLOCK</button>
+      <button data-k="jab" class="t-btn t-jab">JAB</button>
+    </div>
+  </section>
+
+  <!-- ===== Pause ===== -->
+  <section id="pause" class="screen dim hidden">
+    <div class="card">
+      <h2>PAUSED</h2>
+      <button id="resume-btn" class="btn-primary">RESUME</button>
+      <button id="quit-btn" class="btn-ghost">MAIN MENU</button>
+    </div>
+  </section>
+
+  <!-- ===== Results ===== -->
+  <section id="results" class="screen yellow hidden">
+    <div class="rules"><i></i><i></i></div>
+    <div class="res-inner">
+      <div class="res-left">
+        <div class="res-big" id="res-big">K.O.!</div>
+        <div class="res-meta" id="res-meta"></div>
+        <div class="res-name" id="res-name"></div>
+        <div class="res-line" id="res-line"></div>
+        <div class="res-stats" id="res-stats"></div>
+      </div>
+      <div class="res-card" id="res-card"></div>
+    </div>
+    <div class="res-actions">
+      <button id="menu-btn" class="btn-outline">MAIN MENU</button>
+      <button id="rematch-btn" class="btn-dark">REMATCH</button>
+    </div>
+  </section>
+
+  <div id="rotate" class="rotate">Turn your phone sideways for the best view</div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
