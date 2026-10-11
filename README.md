@@ -69,6 +69,7 @@ Animation drives the bodies and physics layers on top. It is not a full ragdoll.
 Dayo, a danfo conductor, fights one champion per district to stop the Landlord's quit notices: Tunde (Oshodi), Bisi (Ojuelegba), Emeka (Ikeja), Femi (Yaba), Kola (Mushin) and Chief Adewale (Lagos Island).
 
 - **Cold-open movies:** the first time through, each chapter opens with a short animated movie shot on a Lagos street set, redressed per district and lit for the time of day (Oshodi at dawn through to Lagos Island at night). Chapter 1 opens on Oshodi waking up, then Dayo hanging off a moving danfo. Skip (or Esc) jumps straight on. The movies live in `src/story/movie/`: `set.js` (the street, traffic, crowd, lighting), `actor.js` (fighter models posed with IK, with bare hands), `films.js` (blocking and camera for each chapter) and `player.js`.
+- **A ring for every district:** each chapter's fight happens on that district's street. The ring and ropes stay the same, but the signs, sky, light and props change: danfos and a quit-notice board at Oshodi in the morning, the buka at Ojuelegba at noon, phone stalls at Ikeja, suya smoke at golden hour in Yaba, the boxing club at dusk in Mushin, and the towers at night on Lagos Island. This lives in `src/story/venues.js`. It only changes looks, never how the fight plays, and Quick Match always gets its usual street.
 - **Scenes:** the face-off before a fight and the scenes after it are captioned panels over the live 3D fighters. Tap, Enter or Space moves on, and Skip (or Esc) jumps to the fight. A retry skips the movie and goes straight to the face-off.
 - **Twists:** every chapter after Oshodi has one twist and one optional bonus goal for extra Street Rep:
   - Ojuelegba: land 10 body shots (hooks).
@@ -80,7 +81,7 @@ Dayo, a danfo conductor, fights one champion per district to stop the Landlord's
 - **Saving:** there is no account or server yet. Progress is one small JSON record in `localStorage` (`gbasgbos.story.v1`), written after every chapter fight. **SAVE CODE** on the route map copies it out as text and loads it back, which moves progress to another phone or browser. Street Rep is worked out from what's been cleared, so replays never pay twice. When Lagos Life links, this record gets uploaded once.
 - **Unlocks are cosmetic for now:** all six fighters stay open in Quick Match.
 - The script lives in `src/story/chapters.js`; the controller in `src/story/story.js`; the save in `src/story/save.js`.
-- Story changes the fight only through opt-in `rules` and `hooks` on `Match` and a CPU tweak. Quick Match passes neither and plays exactly as before.
+- Story changes the fight only through opt-in `rules` and `hooks` on `Match` and a CPU tweak. Quick Match passes neither and plays exactly as before. The district dressing is looks-only and Quick Match never calls it.
 
 ## How it's built
 

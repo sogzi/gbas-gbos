@@ -35,6 +35,7 @@ If a feature truly needs a physics change, say so and ask first.
 
 - Script: `src/story/chapters.js`. Controller: `src/story/story.js`. Save: `src/story/save.js` (localStorage plus save codes; bump `VERSION` and extend `migrate()` if the format changes).
 - Cold-open movies: `src/story/movie/`. They use their own scene and posable copies of the fighter models (`Actor`), never `Fighter`, so they can't touch the fight physics. Every film's `frame(ctx)` must set everything from `ctx.t` alone, so seek and skip stay exact.
+- District rings: `src/story/venues.js` dresses the street around the ring for each chapter (signs, sky, lights, props) through `createVenues(arena).dress(n)`. It changes looks only. Never move the ring, ropes, posts or floor there. `dress(0)` restores the exact Quick Match street, and Quick Match and Mode Select always call it.
 - The script was signed off by Lade from the "Gbas Gbos Story Mode: Draft Scripts" doc. Keep lines as written unless asked.
 
 ## Checking things

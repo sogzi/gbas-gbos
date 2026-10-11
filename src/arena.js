@@ -223,6 +223,7 @@ export function buildArena(scene) {
   }
 
   // ---- Lagos block behind the ring ----
+  const buildings = [];
   let x = -24;
   while (x < 24) {
     const w = 3 + r() * 3.5, h = 6 + r() * 10, d = 4 + r() * 3;
@@ -234,6 +235,7 @@ export function buildArena(scene) {
     const z = -10.5 - r() * 2 - d / 2;
     const b = box(w, h, d, mat, x + w / 2, h / 2 - 0.62, z, root);
     b.receiveShadow = true;
+    buildings.push(b);
     // roof parapet and black water tank, a Lagos rooftop staple
     box(w + 0.2, 0.3, d + 0.2, std('#D9D2C5', 0.9), x + w / 2, h - 0.47, z, root);
     if (r() > 0.4) {
@@ -252,15 +254,18 @@ export function buildArena(scene) {
       tex.repeat.set(1, Math.max(1, Math.round(h / 6.5)));
       const b = box(d, h, w, std('#FFFFFF', 0.92, { map: tex }), side * (13 + r() * 2), h / 2 - 0.62, -7 + i * 5.2, root);
       b.receiveShadow = true;
+      buildings.push(b);
     }
   }
 
   // shop signs on the ground floors
+  const signMeshes = [];
   const signs = [['MAMA PUT BUKA', '#E4572E', '#F4EEE3'], ['OSHODI • OJUELEGBA', '#13110F', '#F5C518'], ['PURE WATER', '#4C8DFF', '#F4EEE3'], ['GBAS GBOS!', '#F5C518', '#13110F']];
   signs.forEach(([t, bg, fg], i) => {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.05), new THREE.MeshStandardMaterial({ map: signTex(t, bg, fg), roughness: 0.6 }));
     s.position.set(-10.5 + i * 7, 2.6, -9.6 - (i % 2) * 0.4);
     root.add(s);
+    signMeshes.push(s);
   });
 
   // a parked danfo bus
@@ -323,5 +328,6 @@ export function buildArena(scene) {
   rim.position.set(6, 4, -6);
   scene.add(rim);
 
-  return { root, sun, ropes };
+  // the handles Story uses to dress the street for each district (src/story/venues.js); Quick Match never does
+  return { root, sun, ropes, scene, hemi, rim, buildings, signs: signMeshes, bus, bulbMat };
 }

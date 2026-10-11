@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { FIGHTERS, ROSTER, UNLOCK_NOTE } from './data.js';
 import { buildArena } from './arena.js';
+import { createVenues } from './story/venues.js';
 import { Fighter } from './fighter.js';
 import { Referee } from './referee.js';
 import { CPU } from './ai.js';
@@ -62,11 +63,13 @@ const load = (id) => (models[id] ??= new Promise((res, rej) => loader.load(`/mod
 const instance = (gltf) => ({ scene: SkeletonUtils.clone(gltf.scene), animations: gltf.animations });
 
 let arena = null;
+let venues = null; // Story's per-district dressing of the street; Quick Match always shows the plain one
 let fx = null;
 
 let refReady;
 async function boot() {
   arena = buildArena(scene);
+  venues = createVenues(arena);
   fx = new Impacts(scene);
   showModes();
   refReady = load('ref').then((g) => {
@@ -134,6 +137,7 @@ async function setupPair(A, B) {
 
 async function setupFighters() {
   staged = 'quick';
+  venues?.dress(0);
   return setupPair(spec(picks.p1), spec(picks.cpu));
 }
 
@@ -283,6 +287,7 @@ function showModes() {
   hud.show(false);
   $('touch').classList.add('hidden');
   $('modes').classList.remove('hidden');
+  venues?.dress(0);
   story.renderModeCard();
   if (fighters) {
     placeForMenu();
@@ -318,6 +323,7 @@ const story = createStory({
   endMatch,
   setMode: (m) => (mode = m),
   setFocus: (f) => (focus = f),
+  dress: (n) => venues?.dress(n),
   get fighters() { return fighters; },
   get match() { return match; },
   showModes,
