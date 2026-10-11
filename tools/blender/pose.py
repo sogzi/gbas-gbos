@@ -12,6 +12,10 @@ STYLE = {
     # crouch (m), stance yaw (deg), stance width/length (m), bounce (m), tempo (x), guard height offset
     "dayo": dict(crouch=0.09, yaw=-32, width=0.34, length=0.42, bounce=0.022, tempo=1.25, guard=0.0, lean=8),
     "bisi": dict(crouch=0.06, yaw=-26, width=0.38, length=0.36, bounce=0.012, tempo=0.85, guard=-0.02, lean=5),
+    "emeka": dict(crouch=0.05, yaw=-36, width=0.32, length=0.46, bounce=0.03, tempo=1.15, guard=-0.04, lean=4),
+    "femi": dict(crouch=0.08, yaw=-30, width=0.34, length=0.40, bounce=0.015, tempo=1.05, guard=0.01, lean=10),
+    "kola": dict(crouch=0.10, yaw=-20, width=0.42, length=0.34, bounce=0.008, tempo=0.8, guard=0.02, lean=9),
+    "chief": dict(crouch=0.07, yaw=-28, width=0.36, length=0.40, bounce=0.014, tempo=1.0, guard=0.0, lean=6),
     "ref": dict(crouch=0.0, yaw=0, width=0.30, length=0.0, bounce=0.004, tempo=1.0, guard=0.0, lean=0),
 }
 
@@ -274,6 +278,15 @@ def run(fid, out):
         for s in ("l", "r"):
             guard_arm(s, dx=sx * 1.6, dz=-dz * 1.3)
 
+    def clip_duck(t):
+        # bob and weave: knees bend, waist folds, head drops under the line of the punch
+        k = punch_curve(t, out=0.28, hold=0.26)
+        sx = 0.05 * math.sin(math.pi * t)
+        body(drop=0.21 * k, sway=sx, crunch=math.radians(30) * k, head_pitch=-math.radians(10) * k)
+        feet()
+        for s in ("l", "r"):
+            guard_arm(s, dx=sx, dz=-0.3 * k, dy=-0.04 * k)
+
     def clip_hit(t):
         k = punch_curve(t, out=0.22, hold=0.08)
         body(lean=math.radians(st["lean"]) - math.radians(14) * k, back=0.05 * k, head_pitch=math.radians(28) * k,
@@ -383,6 +396,7 @@ def run(fid, out):
         ("Victory", clip_victory, 60),
         ("Uppercut", clip_uppercut, round(20 / tempo)),
         ("Slip", clip_slip, 16),
+        ("Duck", clip_duck, 18),
         ("Hit", clip_hit, 12),
         ("HitBody", clip_hitbody, 14),
         ("Down", clip_down, 54),

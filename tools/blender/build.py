@@ -26,6 +26,34 @@ FIGHTERS = {
         skin="#6B4226", trunks="#E4572E", gloves="#F4EEE3", band="#F5C518", hair="#1A1410",
         boots="#F4EEE3", top="#E4572E", hairstyle="bun", headband="#F5C518", trim="#F5C518",
     ),
+    "emeka": dict(
+        macro={'gender': 1.0, 'age': 0.4, 'muscle': 0.7, 'weight': 0.4, 'proportions': 0.85,
+               'height': 0.68, 'cupsize': 0.5, 'firmness': 0.5,
+               'race': {'asian': 0.0, 'caucasian': 0.0, 'african': 1.0}},
+        skin="#A0673F", trunks="#4C8DFF", gloves="#F5C518", band="#E4572E", hair="#1A1410",
+        boots="#13110F", top=None, hairstyle="fade", headband="#E4572E", trim="#E4572E",
+    ),
+    "femi": dict(
+        macro={'gender': 1.0, 'age': 0.35, 'muscle': 0.65, 'weight': 0.35, 'proportions': 0.8,
+               'height': 0.64, 'cupsize': 0.5, 'firmness': 0.5,
+               'race': {'asian': 0.0, 'caucasian': 0.0, 'african': 1.0}},
+        skin="#7A4A2C", trunks="#7D5BD6", gloves="#2E9E6B", band="#F4EEE3", hair="#1A1410",
+        boots="#F4EEE3", top=None, hairstyle="fade", headband="#F4EEE3", trim="#7D5BD6",
+    ),
+    "kola": dict(
+        macro={'gender': 1.0, 'age': 0.62, 'muscle': 0.95, 'weight': 0.9, 'proportions': 0.55,
+               'height': 0.5, 'cupsize': 0.5, 'firmness': 0.5,
+               'race': {'asian': 0.0, 'caucasian': 0.0, 'african': 1.0}},
+        skin="#5A3620", trunks="#2E9E6B", gloves="#E4572E", band="#F4EEE3", hair="#1A1410",
+        boots="#13110F", top=None, hairstyle="fade", headband="#F4EEE3", trim="#F4EEE3",
+    ),
+    "chief": dict(
+        macro={'gender': 1.0, 'age': 0.78, 'muscle': 0.8, 'weight': 0.72, 'proportions': 0.7,
+               'height': 0.58, 'cupsize': 0.5, 'firmness': 0.5,
+               'race': {'asian': 0.0, 'caucasian': 0.0, 'african': 1.0}},
+        skin="#8D5A3B", trunks="#F4EEE3", gloves="#D9A521", band="#7D5BD6", hair="#3A3632",
+        boots="#F4EEE3", top=None, hairstyle="fade", headband="#7D5BD6", trim="#D9A521",
+    ),
     # the referee: white short-sleeve shirt, black trousers and shoes, bow tie, grey hair, bare hands
     "ref": dict(
         macro={'gender': 1.0, 'age': 0.8, 'muscle': 0.5, 'weight': 0.62, 'proportions': 0.6,

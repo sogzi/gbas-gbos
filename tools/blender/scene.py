@@ -1,7 +1,7 @@
 """Hero renders of the fighters in a Lagos street ring.
 
 Run: bl/bin/python -I scene.py <out_dir> <shot> [samples]
-shot: versus | dayo | bisi
+shot: versus | <fighter id> (dayo, bisi, emeka, femi, kola, chief)
 """
 import sys, os, math, random
 import bpy
@@ -101,10 +101,8 @@ def play(rig, name, frame):
 
 
 rigs = {}
-if shot in ("versus", "dayo"):
-    rigs["dayo"] = bring("dayo")
-if shot in ("versus", "bisi"):
-    rigs["bisi"] = bring("bisi")
+for fid in (("dayo", "bisi") if shot == "versus" else (shot,)):
+    rigs[fid] = bring(fid)
 
 # ---------- ring and street ----------
 canvas = mat("canvas", "#2A231D", 0.85)

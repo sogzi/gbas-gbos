@@ -6,11 +6,21 @@ const LEVELS = {
   hard:   { react: 0.15, defend: 0.68, think: [0.25, 0.6], aggro: 0.78, combo: 0.55 },
 };
 
+// jab/hook/upper: how often each punch is picked. slip/duck: how often a read punch is dodged
+// rather than blocked. sig: when the signature gets used.
 const STYLE = {
   // swarmer: works inside, lots of jabs and hooks
-  dayo: { jab: 0.42, hook: 0.3, upper: 0.18, slipBias: 0.55 },
+  dayo: { jab: 0.42, hook: 0.3, upper: 0.18, slip: 0.33, duck: 0.2, sig: 'attack' },
   // slugger: fewer, heavier shots
-  bisi: { jab: 0.3, hook: 0.38, upper: 0.32, slipBias: 0.2 },
+  bisi: { jab: 0.3, hook: 0.38, upper: 0.32, slip: 0.12, duck: 0.1, sig: 'attack' },
+  // out-boxer: pumps the jab from range and makes you miss
+  emeka: { jab: 0.5, hook: 0.26, upper: 0.24, slip: 0.3, duck: 0.25, sig: 'dodge' },
+  // counter-puncher: waits for you, then makes you pay
+  femi: { jab: 0.4, hook: 0.3, upper: 0.3, slip: 0.3, duck: 0.4, sig: 'parry', counter: 0.85 },
+  // tank: walks forward behind a high guard
+  kola: { jab: 0.3, hook: 0.4, upper: 0.3, slip: 0.05, duck: 0.08, sig: 'buff' },
+  // champion: a bit of everything, keeps the finisher for the end
+  chief: { jab: 0.4, hook: 0.32, upper: 0.28, slip: 0.25, duck: 0.25, sig: 'finish' },
 };
 
 export class CPU {
@@ -43,6 +53,17 @@ export class CPU {
     return 'uppercut';
   }
 
+  wantsSig(gap) {
+    const { me, opp } = this;
+    const close = gap < me.data.reach.jab - 0.05;
+    switch (this.style.sig) {
+      case 'attack': return close && Math.random() < 0.7;
+      case 'buff': return gap < 1.6 && Math.random() < 0.6;
+      case 'finish': return close && (opp.hp < 15 || (me.hp < 30 && Math.random() < 0.4));
+      default: return false; // dodge and parry signatures fire from the defence above
+    }
+  }
+
   // returns { move, block, presses[] }
   update(dt) {
     const me = this.me;
@@ -57,14 +78,26 @@ export class CPU {
     // ---- defence: see a punch coming, react after a delay ----
     if (opp.state === 'punch' && opp.move !== this.seenPunch) {
       this.seenPunch = opp.move;
-      if (gap < (opp.data.reach[opp.move.kind] ?? 1.1) + 0.15 && Math.random() < this.lv.defend * (opp.move.sig ? 0.8 : 1)) {
+      const inReach = gap < (opp.data.reach[opp.move.kind] ?? 1.1) + 0.15;
+      const s = this.style;
+      if (inReach && me.sig >= 3 && (s.sig === 'parry' || s.sig === 'dodge') && Math.random() < this.lv.defend + 0.2) {
+        // Hotfix and Express Lane are answers to a punch
+        this.defendAt = this.t + this.lv.react * 0.6;
+        this.defendKind = 'sig';
+      } else if (inReach && Math.random() < this.lv.defend * (opp.move.sig ? 0.8 : 1)) {
         this.defendAt = this.t + this.lv.react * (0.8 + Math.random() * 0.4);
-        this.defendKind = Math.random() < this.style.slipBias * 0.6 && me.stamina > 20 ? 'slip' : 'block';
+        const r = Math.random();
+        // ducking under an uppercut is walking into it
+        const duckOk = opp.move.kind !== 'uppercut';
+        this.defendKind = me.stamina < 20 ? 'block' : r < s.slip ? 'slip' : r < s.slip + s.duck && duckOk ? 'duck' : 'block';
       }
     }
     if (this.defendAt !== null && this.t >= this.defendAt) {
-      if (this.defendKind === 'slip') out.presses.push('slip');
-      else this.blockUntil = this.t + 0.45 + Math.random() * 0.4;
+      if (this.defendKind === 'slip' || this.defendKind === 'duck' || this.defendKind === 'sig') {
+        out.presses.push(this.defendKind);
+        // a counter-puncher fires straight back once the punch has gone by
+        if (this.defendKind !== 'sig' && Math.random() < (this.style.counter ?? 0)) this.pending = { kind: Math.random() < 0.5 ? 'hook' : 'uppercut', until: this.t + 0.9 };
+      } else this.blockUntil = this.t + 0.45 + Math.random() * 0.4;
       this.defendAt = null;
     }
     // tired: cover up more
@@ -108,7 +141,7 @@ export class CPU {
     this.thinkT = a + Math.random() * (b - a);
     if (me.stamina < 14) return out;
 
-    if (me.sig >= 3 && gap < me.data.reach.jab - 0.05 && Math.random() < 0.7) {
+    if (me.sig >= 3 && this.wantsSig(gap)) {
       out.presses.push('sig');
       return out;
     }

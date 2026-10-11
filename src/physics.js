@@ -1,3 +1,4 @@
+// LOCKED: signed off by the owner. Don't change behaviour or tuning without an explicit ask (see CLAUDE.md).
 // Boxing physics: hit volumes on the skeleton, glove sweeps, spring-driven hit reactions,
 // and impact particles. Not a full ragdoll: animation drives the body, physics layers on top.
 import * as THREE from 'three';

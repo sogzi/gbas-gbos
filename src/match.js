@@ -77,13 +77,18 @@ export class Match {
   }
 
   resolve(a, d, m, hit) {
+    // ducked under it: only the uppercut and body shots find a ducking fighter
+    if (d.isDucking && m.kind !== 'uppercut' && hit.zone !== 'body') return;
+    m.landed = true;
     const isP1 = a === this.p1;
     const vel = a.body.gloveVel[m.hand].clone();
     if (vel.lengthSq() < 1) vel.set(a.facing * 4, 0, 0);
     const dir = vel.clone().normalize();
-    const blocked = hit.zone === 'guard' || (d.isBlocking && hit.zone === 'head' && m.kind !== 'uppercut');
+    // Hotfix: a parried punch plays out exactly like a block, but costs nothing and gets answered
+    const parried = d.isParrying;
+    const blocked = parried || hit.zone === 'guard' || (d.isBlocking && hit.zone === 'head' && m.kind !== 'uppercut');
     if (blocked) {
-      const dmg = m.dmg * a.powerMul * m.chip * m.blockMul * d.defMul;
+      const dmg = parried ? 0 : m.dmg * a.powerMul * m.chip * m.blockMul * d.defMul;
       d.hp = Math.max(1, d.hp - dmg);
       d.stamina = Math.max(0, d.stamina - m.stam * 0.9);
       // the guard soaks it: both fighters bounce apart a little, the arms and head jolt
@@ -95,15 +100,25 @@ export class Match {
       this.fx?.spawn(hit.point, dir, 'guard', 0.5);
       this.hitStop = Math.max(this.hitStop, 0.035);
       this.shake = Math.max(this.shake, 0.02);
+      if (parried) {
+        a.stagger(0.5);
+        d.counter();
+        this.hud.say(d.data.signature.name.toUpperCase() + '!', d.data.firstName.toUpperCase(), 1100);
+      }
       return;
     }
-    const counter = d.state === 'punch';
+    // a counter: caught while punching, or just after missing
+    const counter = d.state === 'punch' || d.time - (d.whiffedAt ?? -9) < 0.6;
     const body = hit.zone === 'body';
     if (body) {
       m = { ...m, react: 'HitBody' };
       d.stamina = Math.max(0, d.stamina - 6 - m.dmg); // body shots take the legs and the wind
     }
-    let dmg = m.dmg * a.powerMul * m.dmgMul * d.defMul * (counter ? 1.25 : 1) * (body ? 0.85 : 1);
+    const duckedIntoIt = d.state === 'duck' && m.kind === 'uppercut';
+    let dmg = m.dmg * a.powerMul * m.dmgMul * d.defMul * (counter || duckedIntoIt ? a.data.counterMul ?? 1.25 : 1) * (body ? 0.85 : 1);
+    // Quit Notice: catch someone under 15% health with it and the fight is over
+    const evicted = m.sig === 'Quit Notice' && d.hp < 15;
+    if (evicted) dmg = Math.max(dmg, d.hp);
     const now = a.time;
     a.combo = now - a.lastLanded < 1.1 ? a.combo + 1 : 1;
     a.lastLanded = now;
@@ -124,12 +139,28 @@ export class Match {
     this.kick = a.facing * Math.min(0.12, 0.02 + dmg * 0.008);
     this.shake = Math.max(this.shake, 0.03 + dmg * 0.006);
 
-    if (m.sig && (a.queue.length === 3 || m.stun)) this.hud.say(m.sig.toUpperCase() + '!', a.data.firstName.toUpperCase(), 1200);
+    if (m.sig && a.sigFresh) {
+      a.sigFresh = false;
+      this.hud.say(m.sig.toUpperCase() + '!', a.data.firstName.toUpperCase(), 1200);
+    }
     else if (res === 'stun') this.hud.say('STUNNED!', '', 1200);
     else if (counter && dmg > 4) this.hud.say('COUNTER!', isP1 ? 'P1' : 'CPU', 700);
     else if (a.combo >= 3) this.hud.say(`${a.combo} HIT COMBO`, isP1 ? 'P1' : 'CPU', 900);
 
-    if (res === 'down') this._knockdown(d, a);
+    if (res === 'down') {
+      this.evicted = evicted;
+      this._knockdown(d, a);
+    }
+  }
+
+  // a punch ended without touching anything
+  whiff(a, d, m) {
+    if (this.phase !== 'fight') return;
+    a.whiffedAt = a.time;
+    if (d.state === 'duck') {
+      d.sig = Math.min(3, d.sig + 0.3);
+      this.hud.say('DUCKED!', '', 650);
+    }
   }
 
   _knockdown(d, a) {
@@ -276,8 +307,12 @@ export class Match {
       else if (p === 'hook') f.punch('hook');
       else if (p === 'upper') f.punch('uppercut');
       else if (p === 'slip') f.slip();
+      else if (p === 'duck') f.duck();
       else if (p === 'sig') {
-        if (!f.signature()) f.punch('jab');
+        const name = f.signature();
+        if (!name) f.punch('jab');
+        // signatures that aren't a punch get their callout now
+        else if (f.state !== 'punch') this.hud.say(name.toUpperCase() + '!', f.data.firstName.toUpperCase(), 1000);
       }
     }
   }
@@ -323,7 +358,11 @@ export class Match {
     ref.target.set(downed.x + away * 0.35, 0, -1.05);
     ref.targetYaw = -away * Math.PI / 2 * 0.6;
 
-    // three knockdowns end it on the spot
+    // three knockdowns end it on the spot, and so does a Quit Notice
+    if (this.evicted) {
+      if (this.t > 2.0) this._finish(standing, 'KO', 'QUIT NOTICE');
+      return;
+    }
     if (downed.knockdowns >= RULES.knockdownsForKO) {
       if (this.t > 2.0) this._finish(standing, 'TKO');
       return;
@@ -384,14 +423,14 @@ export class Match {
     this._enter('end');
   }
 
-  _finish(winner, method) {
+  _finish(winner, method, kind) {
     this.cards.push({ d1: this.p1.roundDamage, d2: this.p2.roundDamage, kd1: this.p1.kdRound, kd2: this.p2.kdRound });
     const loser = winner === this.p1 ? this.p2 : this.p1;
     this.hud.count(null);
     sfx.bell(3);
     this.hud.flash(method === 'TKO' ? 'T.K.O.!' : 'K.O.!', `${winner.data.firstName} wins`.toUpperCase(), 2200);
     this.result = {
-      winner, loser, method, kind: method === 'TKO' ? 'THREE KNOCKDOWNS' : 'COUNTED OUT',
+      winner, loser, method, kind: kind ?? (method === 'TKO' ? 'THREE KNOCKDOWNS' : 'COUNTED OUT'),
       round: this.round, clock: RULES.roundSeconds - Math.max(0, this.clockLeft), lastSig: this.lastBlow?.by === winner ? this.lastBlow.sig : null,
     };
     this._enter('end');
