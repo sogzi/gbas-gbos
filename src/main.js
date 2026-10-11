@@ -11,6 +11,7 @@ import { HUD } from './hud.js';
 import { Match } from './match.js';
 import { unlockAudio } from './audio.js';
 import { Impacts } from './physics.js';
+import { createStory } from './story/story.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,6 +52,8 @@ let match = null;
 let fighters = null;
 let ref = null;
 let mode = 'menu';
+let staged = null; // which pair is in the ring: 'quick' for the Quick Match picks, else Story's
+let focus = 'both'; // who a story scene's camera looks at
 
 // ---------- loading ----------
 const loader = new GLTFLoader();
@@ -61,32 +64,52 @@ const instance = (gltf) => ({ scene: SkeletonUtils.clone(gltf.scene), animations
 let arena = null;
 let fx = null;
 
+let refReady;
 async function boot() {
   arena = buildArena(scene);
   fx = new Impacts(scene);
+  showModes();
+  refReady = load('ref').then((g) => {
+    ref = new Referee(g);
+    scene.add(ref.root);
+  });
   try {
-    ref = new Referee(await load('ref'));
+    await refReady;
   } catch (e) {
     $('loading').textContent = 'Could not load the referee. Refresh to try again.';
+    $('save-chip').querySelector('span').textContent = 'Could not load the game. Refresh to try again.';
     console.error(e);
     return;
   }
-  scene.add(ref.root);
-  await setupFighters();
-  showMenu();
+  if (!staged) await setupFighters();
+}
+
+// a fighter to put in the ring: which model to load, its data, and optional kit colours (Story's Tunde)
+const spec = (id) => ({ model: id, data: FIGHTERS[id] });
+
+// give one fighter's kit new colours: its own copies of those materials, so the other corner is untouched
+function tint(root, model, colors) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const key = o.material.name.replace(`${model}_`, '').replace(/\.\d+$/, '');
+    if (colors[key]) {
+      o.material = o.material.clone();
+      o.material.color.set(colors[key]);
+    }
+  });
 }
 
 // load just the two fighters picked, then put them in the ring
 let setupId = 0;
-async function setupFighters() {
+async function setupPair(A, B) {
   const id = ++setupId;
-  const { p1: a, cpu: b } = picks;
+  const a = A.model, b = B.model;
   $('fight-btn').disabled = true;
   $('loading').classList.remove('hidden');
-  $('loading').textContent = `Loading ${FIGHTERS[a].firstName}${a === b ? '' : ` and ${FIGHTERS[b].firstName}`}…`;
+  $('loading').textContent = `Loading ${A.data.firstName}${A.data === B.data ? '' : ` and ${B.data.firstName}`}…`;
   let ga, gb;
   try {
-    [ga, gb] = await Promise.all([load(a), load(b)]);
+    [ga, gb] = await Promise.all([load(a), load(b), refReady]);
   } catch (e) {
     delete models[a];
     delete models[b];
@@ -96,14 +119,22 @@ async function setupFighters() {
   }
   if (id !== setupId) return false; // the picks changed while this was loading
   if (fighters) scene.remove(fighters[0].root, fighters[1].root);
-  const p1 = new Fighter(instance(ga), FIGHTERS[a], -1);
-  const p2 = new Fighter(instance(gb), FIGHTERS[b], 1);
+  const ia = instance(ga), ib = instance(gb);
+  if (A.colors) tint(ia.scene, a, A.colors);
+  if (B.colors) tint(ib.scene, b, B.colors);
+  const p1 = new Fighter(ia, A.data, -1);
+  const p2 = new Fighter(ib, B.data, 1);
   scene.add(p1.root, p2.root);
   fighters = [p1, p2];
-  if (mode === 'menu') placeForMenu();
+  if (mode === 'menu' || mode === 'modes' || mode === 'story') placeForMenu();
   $('loading').classList.add('hidden');
   $('fight-btn').disabled = false;
   return true;
+}
+
+async function setupFighters() {
+  staged = 'quick';
+  return setupPair(spec(picks.p1), spec(picks.cpu));
 }
 
 function placeForMenu() {
@@ -207,6 +238,12 @@ function showMenu() {
 
 function startFight() {
   if (!fighters || $('fight-btn').disabled) return;
+  startMatch();
+}
+
+// shared by Quick Match and Story. Quick Match passes nothing, so it plays exactly as it always has;
+// Story passes its chapter's rules, hooks, level and CPU tweak.
+function startMatch({ rules, hooks, level: lv, cpuTweak, onEnd } = {}) {
   unlockAudio();
   $('menu').classList.add('hidden');
   $('results').classList.add('hidden');
@@ -215,16 +252,76 @@ function startFight() {
   if (isTouch) $('touch').classList.remove('hidden');
   const [p1, p2] = fighters;
   hud.setNames(p1.data, p2.data);
-  const cpu = new CPU(p2, p1, level);
-  match = new Match({ p1, p2, ref, cpu, input, hud, onEnd: showResults, fx, arena });
+  const cpu = new CPU(p2, p1, lv ?? level);
+  cpuTweak?.(cpu);
+  match = new Match({ p1, p2, ref, cpu, input, hud, onEnd: onEnd ?? showResults, fx, arena, rules, hooks });
   // ?autoplay lets the CPU box for P1 too (attract mode and automated tests)
-  if (new URLSearchParams(location.search).has('autoplay')) match.autoP1 = new CPU(p1, p2, level);
+  if (new URLSearchParams(location.search).has('autoplay')) match.autoP1 = new CPU(p1, p2, lv ?? level);
   match.start();
   mode = 'fight';
 }
 
+// a story fight is over (or abandoned): drop the HUD and stop driving the match
+function endMatch() {
+  match = null;
+  hud.show(false);
+  hud.hideFlash();
+  hud.count(null);
+  $('touch').classList.add('hidden');
+  $('pause').classList.add('hidden');
+  document.body.classList.remove('fighting');
+}
+
 $('fight-btn').disabled = true;
 $('fight-btn').addEventListener('click', startFight);
+
+// ---------- mode select ----------
+function showModes() {
+  mode = 'modes';
+  for (const id of ['menu', 'story', 'results', 'pause', 'chapter-end', 'scene']) $(id).classList.add('hidden');
+  document.body.classList.remove('fighting');
+  hud.show(false);
+  $('touch').classList.add('hidden');
+  $('modes').classList.remove('hidden');
+  story.renderModeCard();
+  if (fighters) {
+    placeForMenu();
+    ref?.reset();
+  }
+}
+
+$('mode-cpu').addEventListener('click', () => {
+  $('modes').classList.add('hidden');
+  showMenu();
+  // coming back from Story, the ring still has Story's pair in it
+  if (staged !== 'quick') setupFighters();
+});
+$('mode-story').addEventListener('click', () => {
+  $('modes').classList.add('hidden');
+  story.showMap();
+});
+$('menu-back').addEventListener('click', () => {
+  $('menu').classList.add('hidden');
+  showModes();
+});
+
+const story = createStory({
+  hud,
+  isTouch,
+  renderer,
+  loadModel: load,
+  async setupPair(a, b) {
+    staged = 'story';
+    return setupPair(a, b);
+  },
+  startMatch,
+  endMatch,
+  setMode: (m) => (mode = m),
+  setFocus: (f) => (focus = f),
+  get fighters() { return fighters; },
+  get match() { return match; },
+  showModes,
+});
 
 // ---------- pause ----------
 function setPause(on) {
@@ -237,6 +334,7 @@ $('pause-btn').addEventListener('click', () => setPause(true));
 $('resume-btn').addEventListener('click', () => setPause(false));
 $('quit-btn').addEventListener('click', () => {
   setPause(false);
+  if (story.active) return story.quit();
   match = null;
   showMenu();
 });
@@ -294,6 +392,7 @@ $('menu-btn').addEventListener('click', showMenu);
 // ---------- camera and loop ----------
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(0, 1.6, 6);
+const ORBIT = new Set(['menu', 'modes', 'story']); // screens with the slow orbit behind them
 
 function updateCamera(dt) {
   let mid = 0, gap = 2;
@@ -309,7 +408,21 @@ function updateCamera(dt) {
   let height = 1.55 + Math.min(1.2, (dist - 4.6) * 0.12);
   let lookY = 1.0 - Math.min(0.3, (narrow - 1) * 0.12);
   let x = mid * 0.85;
-  if (mode === 'menu') {
+  if (mode === 'scene' && fighters) {
+    // story scenes: close on whoever is talking, or both of them
+    const f = focus === 'p1' ? fighters[0] : focus === 'p2' ? fighters[1] : null;
+    const span = f ? 1.3 : gap + 1.6;
+    dist = Math.max(f ? 2.7 : 4.0, span / 2 / halfW);
+    x = f ? f.x * 0.9 : mid;
+    height = 1.45;
+    lookY = 1.12;
+    camPos.lerp(new THREE.Vector3(x, height, dist), Math.min(1, dt * 2.5));
+    camLook.lerp(new THREE.Vector3(f ? f.x : mid, lookY, 0), Math.min(1, dt * 3));
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+    return;
+  }
+  if (ORBIT.has(mode)) {
     // slow orbit behind the menu
     const t = performance.now() / 1000;
     x = Math.sin(t * 0.15) * 1.6;
@@ -317,7 +430,7 @@ function updateCamera(dt) {
     height = 1.7;
   }
   camPos.lerp(new THREE.Vector3(x, height, dist), Math.min(1, dt * 3));
-  camLook.lerp(new THREE.Vector3(mode === 'menu' ? 0 : mid, lookY, 0), Math.min(1, dt * 4));
+  camLook.lerp(new THREE.Vector3(ORBIT.has(mode) ? 0 : mid, lookY, 0), Math.min(1, dt * 4));
   camera.position.copy(camPos);
   if (match?.kick) camera.position.x += match.kick;
   const s = match?.shake ?? 0;
@@ -332,6 +445,16 @@ function frame() {
   } else if (fighters) {
     fighters.forEach((f) => f.animate(dt));
     ref?.update(dt);
+    if (mode === 'scene') fx?.update(dt);
+  }
+  if (mode === 'movie') {
+    // a Story cold open: its own set, camera and timeline
+    story.movie.update(dt);
+    if (mode === 'movie') {
+      story.movie.render();
+      requestAnimationFrame(frame);
+      return;
+    }
   }
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -344,7 +467,7 @@ frame();
 
 // handy for debugging and automated tests
 window.__gg = {
-  get match() { return match; }, get fighters() { return fighters; }, get mode() { return mode; }, start: startFight,
+  get match() { return match; }, get fighters() { return fighters; }, get mode() { return mode; }, start: startFight, story,
   // pick both corners and wait for the models: await __gg.pick('kola', 'femi')
   async pick(p1, cpu) {
     picks = { p1, cpu };

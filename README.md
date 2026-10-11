@@ -1,6 +1,12 @@
 # Gbas Gbos!
 
-Lagos Fight Night: a street and ring boxing game. This is the **quick match demo**: six fighters, a referee and a 3-round fight against the CPU. There is no crowd and no crowd sound yet.
+Lagos Fight Night: a street and ring boxing game. The game opens on Mode Select:
+
+- **VS CPU** (Quick Match): six fighters, a referee and a 3-round fight against the CPU.
+- **Lagos Life Career** (Story mode, "Last Stop"): six chapters from Oshodi to Lagos Island.
+- Online and Training show as coming soon.
+
+There is no crowd and no crowd sound yet, and no sign-up.
 
 ## Play
 
@@ -58,6 +64,24 @@ Animation drives the bodies and physics layers on top. It is not a full ragdoll.
 - **Armour:** Bisi (slugger) and Kola (tank) walk through light shots, and through slightly heavier ones while they're punching.
 - Reach for every fighter was measured the same way, from glove contact against Dayo (Dayo against Bisi). The shortest jab is Bisi's (0.94 m) and the longest is Emeka's (1.22 m).
 
+## Story mode
+
+Dayo, a danfo conductor, fights one champion per district to stop the Landlord's quit notices: Tunde (Oshodi), Bisi (Ojuelegba), Emeka (Ikeja), Femi (Yaba), Kola (Mushin) and Chief Adewale (Lagos Island).
+
+- **Cold-open movies:** the first time through, each chapter opens with a short animated movie shot on a Lagos street set, redressed per district and lit for the time of day (Oshodi at dawn through to Lagos Island at night). Chapter 1 opens on Oshodi waking up, then Dayo hanging off a moving danfo. Skip (or Esc) jumps straight on. The movies live in `src/story/movie/`: `set.js` (the street, traffic, crowd, lighting), `actor.js` (fighter models posed with IK, with bare hands), `films.js` (blocking and camera for each chapter) and `player.js`.
+- **Scenes:** the face-off before a fight and the scenes after it are captioned panels over the live 3D fighters. Tap, Enter or Space moves on, and Skip (or Esc) jumps to the fight. A retry skips the movie and goes straight to the face-off.
+- **Twists:** every chapter after Oshodi has one twist and one optional bonus goal for extra Street Rep:
+  - Ojuelegba: land 10 body shots (hooks).
+  - Ikeja: Emeka dodges more; land 3 punches straight off a duck.
+  - Yaba: Femi's Hotfix meter refills on its own; get parried 2 times or fewer.
+  - Mushin: Kola fires No Shaking every round and gets up fast; score a knockdown.
+  - Lagos Island: Chief on Hard. A red line marks 15% on your health, below which Quit Notice ends the fight.
+- **Oshodi** is the tutorial: one 90-second round against Tunde, a recoloured Dayo, on Easy. On the first try the tips walk through the controls, and Dayo can't be knocked out, so he can only lose on the cards.
+- **Saving:** there is no account or server yet. Progress is one small JSON record in `localStorage` (`gbasgbos.story.v1`), written after every chapter fight. **SAVE CODE** on the route map copies it out as text and loads it back, which moves progress to another phone or browser. Street Rep is worked out from what's been cleared, so replays never pay twice. When Lagos Life links, this record gets uploaded once.
+- **Unlocks are cosmetic for now:** all six fighters stay open in Quick Match.
+- The script lives in `src/story/chapters.js`; the controller in `src/story/story.js`; the save in `src/story/save.js`.
+- Story changes the fight only through opt-in `rules` and `hooks` on `Match` and a CPU tweak. Quick Match passes neither and plays exactly as before.
+
 ## How it's built
 
 - **Vite + three.js.** No game engine. Everything is in `src/`:
@@ -77,3 +101,4 @@ Animation drives the bodies and physics layers on top. It is not a full ragdoll.
 - `tools/blender/` has the scripts that build the models: Blender 5 as the `bpy` Python module, plus MPFB2 (CC0) for the base bodies. To add a fighter, add a `FIGHTERS` entry in `build.py` and a `STYLE` entry in `pose.py`, then a `FIGHTERS` entry in `src/data.js` with its measured `reach`, and an AI `STYLE` in `src/ai.js`.
 - Fonts: Anton and Bricolage Grotesque, OFL. The licences are in `public/fonts/`.
 - Open `/?autoplay` to have the CPU box for P1 as well. This is useful for watching a full fight or testing. In the console, `await __gg.pick('kola', 'femi')` sets both corners.
+- For Story: `__gg.story.play(n)` starts chapter n (if it's unlocked), `__gg.story.skip()` skips a scene, and `__gg.story.save` is the save (`reset()`, `exportCode()`, `importCode(code)`).
