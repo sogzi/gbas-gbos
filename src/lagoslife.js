@@ -2,8 +2,8 @@
 // When the game is opened inside Lagos Life it runs in their frame. We load their SDK there, learn who is
 // playing (a per-game pseudonym, a display name and an avatar), follow their pause and resume, and post
 // Street Rep to the game's leaderboard. Opened anywhere else, none of this runs and nothing is loaded.
-// Purchases and anything that grants value must be verified by our server with the secret key; that
-// side isn't here yet.
+// Purchases are never trusted from here: the game hands each one to our server (api/vatar-claim.js),
+// which checks it with Lagos Life, marks it delivered and only then says to unlock it.
 
 const SDK = 'https://lagoslife.app/sdk/vatar-games-v1.js';
 const SCORE_GAP = 21000; // the SDK takes one score per 20 s per player
@@ -21,6 +21,51 @@ let ready = null;
 let lastScore = 0;
 let pendingScore = null;
 let scoreTimer = 0;
+const owned = new Set();
+const ownedListeners = [];
+const OWNED_KEY = 'gbasgbos.owned.v1';
+
+// one-off cosmetics this player owns, remembered per Lagos Life player on this device. There's no API to
+// list what a player owns, so a new device learns it again when Lagos Life answers `owned` to a purchase.
+function loadOwned() {
+  try {
+    const all = JSON.parse(localStorage.getItem(OWNED_KEY) || '{}');
+    for (const id of all[state.player.id] || []) owned.add(id);
+  } catch {}
+}
+function grant(productId) {
+  if (owned.has(productId)) return;
+  owned.add(productId);
+  try {
+    const all = JSON.parse(localStorage.getItem(OWNED_KEY) || '{}');
+    all[state.player.id] = [...owned];
+    localStorage.setItem(OWNED_KEY, JSON.stringify(all));
+  } catch {}
+  for (const fn of ownedListeners) fn(productId);
+}
+
+// ask our server to check a purchase and mark it delivered; resolves to the product id it unlocked
+async function claim(purchaseId) {
+  const session = await window.Vatar.session();
+  const r = await fetch('/api/vatar-claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: typeof session === 'string' ? session : session?.session, purchaseId }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(data.error || 'claim failed'), { code: data.error || 'error' });
+  grant(data.productId);
+  return data.productId;
+}
+
+// paid but not yet delivered (closed mid-payment, crashed): claim them now
+async function restore() {
+  try {
+    for (const p of (await window.Vatar.purchases()) || []) await claim(p.purchaseId).catch((e) => console.info('Lagos Life claim later:', e.code));
+  } catch (e) {
+    console.info('Lagos Life purchases not restored:', e?.code || e);
+  }
+}
 
 function loadSdk() {
   if (window.Vatar) return Promise.resolve(window.Vatar);
@@ -47,6 +92,9 @@ export function connect({ onPause, onResume } = {}) {
       const r = await V.init();
       state.player = r.player;
       state.mode = r.mode;
+      loadOwned();
+      V.onPurchase((p) => claim(p.purchaseId).catch((e) => console.info('Lagos Life claim later:', e.code)));
+      restore();
       return r.player;
     } catch (e) {
       // not_framed (some other site framed us), timeout, signed_out, …: carry on as a normal web game
@@ -91,4 +139,21 @@ export function submitScore(n) {
 export async function leaderboard() {
   if (!state.player || !window.Vatar) return null;
   return window.Vatar.leaderboard();
+}
+
+export const isOwned = (productId) => owned.has(productId);
+export const onOwned = (fn) => ownedListeners.push(fn);
+
+// Buy through Lagos Life's pay sheet, then have our server check it. Resolves to 'owned' once unlocked;
+// rejects with the SDK's code (cancelled, payment_failed, not_for_sale, …) otherwise.
+export async function buy(productId) {
+  if (!state.player || !window.Vatar) throw Object.assign(new Error('not connected'), { code: 'not_framed' });
+  try {
+    const p = await window.Vatar.purchase(productId);
+    await claim(p.purchaseId);
+  } catch (e) {
+    if (e?.code !== 'owned') throw e;
+    grant(productId); // Lagos Life says this player already bought it (another device)
+  }
+  return 'owned';
 }

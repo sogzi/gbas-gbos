@@ -14,7 +14,7 @@ import { unlockAudio, holdAudio } from './audio.js';
 import { Impacts } from './physics.js';
 import { createStory } from './story/story.js';
 import { inject as injectAnalytics } from '@vercel/analytics';
-import { connect as connectLagosLife, submitScore } from './lagoslife.js';
+import { connect as connectLagosLife, submitScore, isOwned } from './lagoslife.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -369,6 +369,7 @@ connectLagosLife({
   if (player.avatar) $('ll-avatar').src = player.avatar;
   $('ll-chip').classList.remove('hidden');
   $('story-board').classList.remove('hidden');
+  $('story-gloves').classList.toggle('hidden', isOwned('naija-gloves'));
   if (story.save.rep() > 0) submitScore(story.save.rep());
 });
 

@@ -90,7 +90,11 @@ Gbas Gbos can run inside Lagos Life as a Vatar game ([developer docs](https://la
 - It pauses the fight, the movie and the sound when Lagos Life says so (phone in the background, pay sheet open). A fight stays paused until the player taps Resume.
 - It posts the player's Street Rep to the game's Lagos Life leaderboard after every Story fight. **REP BOARD** on the route map shows the top 50.
 
-Opened anywhere else, nothing from Lagos Life loads and the game works as before. Purchases and anything else that grants value have to be checked by our own server with the secret key, so they aren't built yet.
+- It sells one item, **Naija Gloves**: a one-off cosmetic, green-and-white gloves Dayo wears in Story. The game never trusts its own word for a purchase. It sends each one to `api/vatar-claim.js` (a Vercel function), which checks the player's session and the purchase with Lagos Life and marks it delivered. Only then does the game unlock the gloves. Paid purchases the game never claimed, for example after the tab closed mid-payment, are claimed the next time the game opens. `api/vatar-webhook.js` checks Lagos Life's signature and answers.
+
+Opened anywhere else, nothing from Lagos Life loads and the game works as before.
+
+The server needs `VATAR_SECRET` and `VATAR_WEBHOOK_SECRET` in the Vercel project's environment variables. The webhook address is `https://gbas-gbos.applixr.com/api/vatar-webhook`.
 
 ## How it's built
 

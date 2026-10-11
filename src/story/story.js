@@ -7,7 +7,11 @@ import { save, askToPersist, isMemoryOnly, isInstalled } from './save.js';
 import { FIGHTERS } from '../data.js';
 import { createMovie } from './movie/player.js';
 import { FILMS } from './movie/films.js';
-import { lagosLife, submitScore, leaderboard } from '../lagoslife.js';
+import { lagosLife, submitScore, leaderboard, buy, isOwned, onOwned } from '../lagoslife.js';
+
+// Naija Gloves: Lagos Life's one ₦100 item, a one-off cosmetic. Dayo wears green-and-white gloves in Story.
+const GLOVES = 'naija-gloves';
+const GLOVE_KIT = { glove: '#0F8A4B', gcuff: '#F4EEE3' };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -97,8 +101,10 @@ export function createStory(g) {
     if (isMemoryOnly()) notes.push('<div class="warn">This browser isn’t letting the game save (private browsing?). Progress lasts until you close the tab, so grab a SAVE CODE before you go.</div>');
     else if (isIOS() && !isInstalled() && !lagosLife.framed) notes.push('<div>On iPhone, add Gbas Gbos to your Home Screen (Share ▸ Add to Home Screen) so Safari keeps your progress.</div>');
     else notes.push('<div>Progress saves on this device after every fight. Use SAVE CODE to back it up or move it to another phone.</div>');
-    $('story-note').innerHTML = notes.join('');
     $('story-board').classList.toggle('hidden', !lagosLife.connected);
+    $('story-gloves').classList.toggle('hidden', !lagosLife.connected || isOwned(GLOVES));
+    if (isOwned(GLOVES)) notes.push('<div><b>NAIJA GLOVES</b> · Dayo wears them in every Story fight.</div>');
+    $('story-note').innerHTML = notes.join('');
   }
 
   function showMap() {
@@ -222,7 +228,7 @@ export function createStory(g) {
     const film = !save.seen(ch.n) && FILMS[ch.n];
     let ok = true;
     try {
-      [ok] = await Promise.all([g.setupPair(storyFighter('dayo'), storyFighter(ch.opp)), film && movie.prepare(film)]);
+      [ok] = await Promise.all([g.setupPair(isOwned(GLOVES) ? { ...storyFighter('dayo'), colors: GLOVE_KIT } : storyFighter('dayo'), storyFighter(ch.opp)), film && movie.prepare(film)]);
     } catch (e) {
       console.error(e);
       ok = false;
@@ -544,6 +550,26 @@ export function createStory(g) {
     }
   });
   $('board-close').addEventListener('click', () => $('board-dialog').classList.add('hidden'));
+
+  // ---------- Lagos Life: Naija Gloves ----------
+  const BUY_MSG = {
+    cancelled: '', payment_failed: 'Payment didn’t go through. Nothing was charged.', not_for_sale: 'Naija Gloves aren’t on sale right now.',
+    busy: 'One moment, Lagos Life is busy.', rate_limited: 'One moment, then try again.',
+  };
+  $('story-gloves').addEventListener('click', async () => {
+    const b = $('story-gloves');
+    b.disabled = true;
+    try {
+      await buy(GLOVES);
+    } catch (e) {
+      const m = BUY_MSG[e?.code] ?? 'Couldn’t finish that. If you paid, the gloves arrive next time you open the game.';
+      if (m) b.textContent = m;
+      setTimeout(() => { b.textContent = 'NAIJA GLOVES'; b.disabled = false; }, m ? 3500 : 0);
+      return;
+    }
+    b.disabled = false;
+  });
+  onOwned(() => { if (!$('story').classList.contains('hidden')) renderMap(); });
   $('save-close').addEventListener('click', () => {
     $('save-dialog').classList.add('hidden');
     renderMap();
