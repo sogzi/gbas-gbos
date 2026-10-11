@@ -184,7 +184,7 @@ export function buildDanfo(opts = {}) {
   return g;
 }
 
-function buildKeke(color) {
+export function buildKeke(color) {
   const g = new THREE.Group();
   const body = std(color, 0.5);
   box(1.9, 0.9, 1.2, body, 0, 0.8, 0, g);
@@ -201,7 +201,7 @@ function buildKeke(color) {
   return g;
 }
 
-function buildCar(color) {
+export function buildCar(color) {
   const g = new THREE.Group();
   const body = std(color, 0.35, { metalness: 0.3 });
   box(4.2, 0.7, 1.8, body, 0, 0.65, 0, g);

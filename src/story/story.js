@@ -215,6 +215,7 @@ export function createStory(g) {
     $('scene-cap').innerHTML = `<b>${esc(ch.title.toUpperCase())}</b>CHAPTER ${ch.n} · ${esc(ch.district.toUpperCase())}`;
     $('scene-who').textContent = $('scene-line').textContent = '';
     $('scene').classList.remove('hidden');
+    g.dress?.(ch.n); // the ring, dressed for this district
     // the first time through, the cold open is a movie; a retry goes straight to the face-off
     const film = !save.seen(ch.n) && FILMS[ch.n];
     let ok = true;
