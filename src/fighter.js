@@ -307,7 +307,8 @@ export class Fighter {
 
   // ---------- being hit ----------
   takeHit(move, dmg, attacker) {
-    this.hp = Math.max(0, this.hp - dmg);
+    // minHp: Story's tutorial keeps the player standing; everywhere else it's unset
+    this.hp = Math.max(this.minHp ?? 0, this.hp - dmg);
     this.vx += -this.facing * (0.45 + dmg * 0.11) * (78 / this.mass);
     if (this.hp <= 0) return 'down';
     // No Shaking: it hurts, but nothing stops him

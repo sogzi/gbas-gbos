@@ -25,6 +25,17 @@ New fighters get their `reach` by measuring glove contact, not by guessing: plac
 
 If a feature truly needs a physics change, say so and ask first.
 
+## Locked: Quick Match v0.3 (Lade, 11 Oct 2026)
+
+"Lock this version. Its solid. Don't tamper with it." The snapshot is branch `release/v0.3-quick-match` (commit 7230fa0). New modes are built around Quick Match, not by changing it:
+- Story mode changes a fight only through the opt-in `rules` and `hooks` on `Match`, `Fighter.minHp`, and a CPU tweak. Quick Match passes none of these.
+- If a new mode needs Quick Match to behave differently, make it opt-in and say so in the PR.
+
+## Story mode
+
+- Script: `src/story/chapters.js`. Controller: `src/story/story.js`. Save: `src/story/save.js` (localStorage plus save codes; bump `VERSION` and extend `migrate()` if the format changes).
+- The script was signed off by Lade from the "Gbas Gbos Story Mode: Draft Scripts" doc. Keep lines as written unless asked.
+
 ## Checking things
 
 ```bash

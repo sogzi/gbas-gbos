@@ -5,8 +5,11 @@ import { sfx } from './audio.js';
 const NEUTRAL_X = 2.4; // how far the standing fighter backs off during a count
 
 export class Match {
-  constructor({ p1, p2, ref, cpu, input, hud, onEnd, fx, arena }) {
+  // `rules` and `hooks` are for Story mode only; Quick Match passes neither and plays exactly as before
+  constructor({ p1, p2, ref, cpu, input, hud, onEnd, fx, arena, rules, hooks }) {
     Object.assign(this, { p1, p2, ref, cpu, input, hud, onEnd, fx, arena });
+    this.rules = { ...RULES, ...rules };
+    this.hooks = hooks ?? {};
     this.shake = 0;
     this.hitStop = 0;
     this.kick = 0; // camera nudge along the punch
@@ -33,7 +36,7 @@ export class Match {
     this.t = 0;
     this.step = 0;
     if (phase === 'intro') {
-      this.clockLeft = RULES.roundSeconds;
+      this.clockLeft = this.rules.roundSeconds;
       this.p1.reset(false);
       this.p2.reset(false);
       this.p1.roundDamage = this.p2.roundDamage = 0;
@@ -45,7 +48,7 @@ export class Match {
       this.ref.idle();
       this.input.clear();
       this.hud.clock(this.round, this.clockLeft);
-      this.hud.flash(this.round === RULES.rounds ? 'FINAL ROUND' : `ROUND ${this.round}`,
+      this.hud.flash(this.round === this.rules.rounds && this.rules.rounds > 1 ? 'FINAL ROUND' : `ROUND ${this.round}`,
         `${this.p1.data.firstName} vs ${this.p2.data.firstName}`.toUpperCase(), 1300);
     }
   }
@@ -104,7 +107,9 @@ export class Match {
         a.stagger(0.5);
         d.counter();
         this.hud.say(d.data.signature.name.toUpperCase() + '!', d.data.firstName.toUpperCase(), 1100);
+        this.hooks.parry?.(a, d);
       }
+      this.hooks.blocked?.(a, d, m);
       return;
     }
     // a counter: caught while punching, or just after missing
@@ -147,6 +152,7 @@ export class Match {
     else if (counter && dmg > 4) this.hud.say('COUNTER!', isP1 ? 'P1' : 'CPU', 700);
     else if (a.combo >= 3) this.hud.say(`${a.combo} HIT COMBO`, isP1 ? 'P1' : 'CPU', 900);
 
+    this.hooks.land?.(a, d, m, hit, res);
     if (res === 'down') {
       this.evicted = evicted;
       this._knockdown(d, a);
@@ -177,6 +183,7 @@ export class Match {
     this.countN = 0;
     this.hud.say('KNOCKDOWN!', '', 1300);
     this._enter('down');
+    this.hooks.knockdown?.(d, a);
   }
 
   _mash(k) {
@@ -229,6 +236,7 @@ export class Match {
           hud.flash('FIGHT!', '', 700);
           ref.target.set(0, 0, -1.6);
           this._enter('fight');
+          this.hooks.round?.(this.round);
         }
         break;
       case 'fight': {
@@ -260,7 +268,7 @@ export class Match {
           ref.target.set(0, 0, -0.4);
         }
         if (this.t > 2.4) {
-          if (this.round >= RULES.rounds) this._decision();
+          if (this.round >= this.rules.rounds) this._decision();
           else {
             this.round++;
             p1.hp = Math.min(100, p1.hp + 12);
@@ -291,6 +299,7 @@ export class Match {
         break;
     }
 
+    this.hooks.tick?.(dt);
     hud.side(1, p1);
     hud.side(2, p2);
     this.shake *= Math.exp(-dt * 10);
@@ -310,6 +319,7 @@ export class Match {
       else if (p === 'duck') f.duck();
       else if (p === 'sig') {
         const name = f.signature();
+        if (name) this.hooks.sig?.(f, name);
         if (!name) f.punch('jab');
         // signatures that aren't a punch get their callout now
         else if (f.state !== 'punch') this.hud.say(name.toUpperCase() + '!', f.data.firstName.toUpperCase(), 1000);
@@ -431,7 +441,7 @@ export class Match {
     this.hud.flash(method === 'TKO' ? 'T.K.O.!' : 'K.O.!', `${winner.data.firstName} wins`.toUpperCase(), 2200);
     this.result = {
       winner, loser, method, kind: kind ?? (method === 'TKO' ? 'THREE KNOCKDOWNS' : 'COUNTED OUT'),
-      round: this.round, clock: RULES.roundSeconds - Math.max(0, this.clockLeft), lastSig: this.lastBlow?.by === winner ? this.lastBlow.sig : null,
+      round: this.round, clock: this.rules.roundSeconds - Math.max(0, this.clockLeft), lastSig: this.lastBlow?.by === winner ? this.lastBlow.sig : null,
     };
     this._enter('end');
   }

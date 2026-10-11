@@ -10,16 +10,127 @@
   <meta name="apple-mobile-web-app-title" content="Gbas Gbos" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/img/icon-192.png" />
-  <title>Gbas Gbos! Quick Match</title>
+  <title>Gbas Gbos!</title>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
   <canvas id="stage"></canvas>
 
+  <!-- ===== Mode select ===== -->
+  <section id="modes" class="screen hidden">
+    <div class="stripe"></div>
+    <div class="modes-inner">
+      <header class="modes-head">
+        <div class="brand">
+          <div class="kicker">GBAS GBOS!</div>
+          <h1 class="modes-title">CHOOSE YOUR FIGHT</h1>
+        </div>
+        <div class="chip-saved" id="save-chip"><i></i><span>Saved on this device</span></div>
+      </header>
+      <div class="mode-cards">
+        <button class="mode-card" id="mode-cpu">
+          <div class="mc-top"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#F5C518" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"></path></svg><span class="mc-no">01</span></div>
+          <div class="mc-name">VS CPU</div>
+          <div class="mc-desc">Quick bout against the computer. Pick two fighters, pick a difficulty, gbas gbos.</div>
+          <div class="mc-foot"><span class="pill">EASY</span><span class="pill on">NORMAL</span><span class="pill">HARD</span></div>
+        </button>
+        <button class="mode-card soon" disabled aria-disabled="true">
+          <div class="mc-top"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#4C8DFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"></path><circle cx="17" cy="9" r="2.8"></circle><path d="M16 14.2c3.2 0 5.5 2.1 5.5 5.3"></path></svg><span class="mc-no">02</span></div>
+          <div class="mc-name">ONLINE WITH FRIENDS</div>
+          <div class="mc-desc">Create a room, share the code, settle it properly.</div>
+          <div class="mc-foot blue">COMING SOON</div>
+        </button>
+        <button class="mode-card story" id="mode-story">
+          <div class="mc-top"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#13110F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"></path><path d="M5 21V10l5-3v14"></path><path d="M10 21V4l9 4v13"></path><path d="M13 10h3M13 14h3M13 18h3"></path></svg><span class="mc-no">03</span></div>
+          <div class="mc-name">LAGOS LIFE CAREER</div>
+          <div class="mc-desc">Story mode: Last Stop. Fight your way from Oshodi to Lagos Island and tear up the Landlord’s quit notice.</div>
+          <div class="mc-foot">
+            <div class="mc-prog"><span id="mc-where">DISTRICT 1 OF 6 · OSHODI</span><span id="mc-rep">0 REP</span></div>
+            <div class="mc-bar"><i id="mc-bar"></i></div>
+          </div>
+        </button>
+        <button class="mode-card soon" disabled aria-disabled="true">
+          <div class="mc-top"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#FF6B35" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v3"></path><rect x="7" y="5" width="10" height="16" rx="5"></rect><path d="M7 11h10"></path></svg><span class="mc-no">04</span></div>
+          <div class="mc-name">TRAINING</div>
+          <div class="mc-desc">Work the bag, learn combos and time your signature move.</div>
+          <div class="mc-foot red">COMING SOON</div>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Story: route map ===== -->
+  <section id="story" class="screen hidden">
+    <div class="stripe"></div>
+    <div class="story-inner">
+      <header class="story-head">
+        <div class="brand">
+          <div class="kicker">LAGOS LIFE CAREER</div>
+          <h1 class="modes-title">LAST STOP</h1>
+          <div class="sub">Oshodi to Lagos Island · six districts · one quit notice</div>
+        </div>
+        <div class="rep-box"><div class="rep-n" id="rep-n">0</div><div class="rep-l">STREET REP</div><div class="rep-r" id="rep-r">0–0</div></div>
+      </header>
+      <div class="route" id="route"></div>
+      <div class="story-note" id="story-note"></div>
+      <div class="story-bar">
+        <button class="btn-ghost" id="story-back">◀ MODES</button>
+        <button class="btn-ghost" id="story-save">SAVE CODE</button>
+        <button class="btn-primary" id="story-go">CONTINUE</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Story: scene panels ===== -->
+  <section id="scene" class="hidden" aria-live="polite">
+    <div class="scene-top">
+      <div class="scene-tag" id="scene-tag"></div>
+      <button class="btn-ghost scene-skip" id="scene-skip">SKIP ▸▸</button>
+    </div>
+    <div class="scene-panel" id="scene-panel">
+      <div class="scene-cap" id="scene-cap"></div>
+      <div class="scene-who" id="scene-who"></div>
+      <div class="scene-line" id="scene-line"></div>
+      <div class="scene-next">TAP TO CONTINUE ▸</div>
+    </div>
+  </section>
+
+  <!-- ===== Story: chapter result ===== -->
+  <section id="chapter-end" class="screen dim hidden">
+    <div class="card ch-card">
+      <div class="ch-kicker" id="ch-kicker"></div>
+      <h2 id="ch-title"></h2>
+      <div class="ch-body" id="ch-body"></div>
+      <div class="ch-actions">
+        <button class="btn-ghost" id="ch-map">ROUTE MAP</button>
+        <button class="btn-primary" id="ch-next"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Story: save code ===== -->
+  <section id="save-dialog" class="screen dim hidden">
+    <div class="card save-card">
+      <h2>SAVE CODE</h2>
+      <p class="muted-p">Your progress is saved on this device. Copy this code to move it to another phone or browser, or to keep a backup.</p>
+      <textarea id="save-out" readonly rows="3" aria-label="Your save code"></textarea>
+      <button class="btn-ghost" id="save-copy">COPY CODE</button>
+      <p class="muted-p">Have a code? Paste it here to load that progress. It replaces what’s on this device.</p>
+      <textarea id="save-in" rows="2" aria-label="Paste a save code" placeholder="GBS1-…"></textarea>
+      <div class="save-msg" id="save-msg"></div>
+      <div class="ch-actions">
+        <button class="btn-ghost" id="save-reset">RESET STORY</button>
+        <button class="btn-ghost" id="save-load">LOAD CODE</button>
+        <button class="btn-primary" id="save-close">DONE</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== Title / fighter select ===== -->
-  <section id="menu" class="screen">
+  <section id="menu" class="screen hidden">
     <div class="stripe"></div>
     <div class="menu-inner">
+      <button class="btn-back" id="menu-back">◀ MODES</button>
       <header class="brand">
         <div class="kicker">LAGOS FIGHT NIGHT</div>
         <h1>GBAS GBOS!</h1>
@@ -62,7 +173,7 @@
     <div class="hud-top">
       <div class="side p1">
         <div class="name"><span><b class="red">P1</b> · <span id="n1"></span></span><span id="hp1t">100</span></div>
-        <div class="hp" role="img" aria-label="Player 1 health"><i class="trail" id="tr1"></i><i class="fill" id="hp1"></i></div>
+        <div class="hp" role="img" aria-label="Player 1 health"><i class="trail" id="tr1"></i><i class="fill" id="hp1"></i><i class="quit-mark"></i></div>
         <div class="sub-row">
           <div class="st"><i id="st1"></i></div>
           <div class="pips" id="pip1"><i></i><i></i><i></i></div>
@@ -89,6 +200,9 @@
     <div id="callout" class="callout"><div class="big"></div><div class="tag"></div></div>
     <div id="count" class="count"></div>
     <div id="banner" class="banner"></div>
+    <div id="story-goal" class="story-goal hidden"></div>
+    <div id="story-tip" class="story-tip hidden"></div>
+    <div id="story-line" class="story-line hidden"><b></b><span></span></div>
     <div class="legend legend-fight">
       <span><kbd>A</kbd><kbd>D</kbd> Move</span>
       <span><kbd>J</kbd> Jab</span>
