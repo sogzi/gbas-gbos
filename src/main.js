@@ -13,6 +13,7 @@ import { Match } from './match.js';
 import { unlockAudio } from './audio.js';
 import { Impacts } from './physics.js';
 import { createStory } from './story/story.js';
+import { inject as injectAnalytics } from '@vercel/analytics';
 
 const $ = (id) => document.getElementById(id);
 
@@ -470,6 +471,9 @@ function frame() {
 renderPicks();
 boot();
 frame();
+
+// Vercel Web Analytics: page views only (no cookies); turn it on in the Vercel project's Analytics tab
+injectAnalytics({ mode: import.meta.env.DEV ? 'development' : 'production' });
 
 // handy for debugging and automated tests
 window.__gg = {
