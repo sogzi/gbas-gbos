@@ -18,7 +18,11 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ground); color: var(--chalk); font-family: var(--body); }
-body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { touch-action: manipulation; overscroll-behavior: none; }
+body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+body.fighting, body.fighting #stage, #touch { touch-action: none; }
+#hud, #touch { overflow: hidden; }
 button { font: inherit; color: inherit; cursor: pointer; }
 .hidden { display: none !important; }
 .muted { color: var(--muted); font-weight: 600; }
@@ -87,6 +91,7 @@ kbd.y { border-color: var(--yellow); color: var(--yellow); }
 .side { display: flex; flex-direction: column; gap: 6px; }
 .side .name { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 800; letter-spacing: 1px; text-shadow: 0 2px 0 var(--ground); white-space: nowrap; }
 .side .name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.side .name > span[id$="t"] { flex-shrink: 0; }
 .hp { position: relative; height: 26px; background: var(--panel2); border: 3px solid var(--chalk); border-radius: 4px; overflow: hidden; }
 .hp.low { border-color: var(--red); }
 .hp i { position: absolute; top: 0; bottom: 0; }

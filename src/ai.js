@@ -1,5 +1,4 @@
 // CPU opponent. Produces the same intents a player would, with human-ish reaction times.
-import { MOVES } from './data.js';
 
 const LEVELS = {
   easy:   { react: 0.38, defend: 0.22, think: [0.7, 1.4], aggro: 0.45, combo: 0.15 },
@@ -30,6 +29,7 @@ export class CPU {
     this.defendKind = null;
     this.blockUntil = 0;
     this.combo = [];
+    this.pending = null; // a punch we've decided on and are stepping in to land
     this.drift = 0;
     this.driftT = 0;
     this.t = 0;
@@ -57,7 +57,7 @@ export class CPU {
     // ---- defence: see a punch coming, react after a delay ----
     if (opp.state === 'punch' && opp.move !== this.seenPunch) {
       this.seenPunch = opp.move;
-      if (gap < opp.move.reach + 0.15 && Math.random() < this.lv.defend * (opp.move.sig ? 0.8 : 1)) {
+      if (gap < (opp.data.reach[opp.move.kind] ?? 1.1) + 0.15 && Math.random() < this.lv.defend * (opp.move.sig ? 0.8 : 1)) {
         this.defendAt = this.t + this.lv.react * (0.8 + Math.random() * 0.4);
         this.defendKind = Math.random() < this.style.slipBias * 0.6 && me.stamina > 20 ? 'slip' : 'block';
       }
@@ -82,9 +82,22 @@ export class CPU {
     }
     const err = gap - (want + this.drift);
     if (Math.abs(err) > 0.08) out.move = Math.sign(err) * toward * Math.min(1, Math.abs(err) * 3);
-    if (opp.state === 'stun' || opp.state === 'hit') out.move = gap > MOVES.hook.reach - 0.05 ? toward : 0;
+    if (opp.state === 'stun' || opp.state === 'hit') out.move = gap > me.data.reach.hook - 0.08 ? toward : 0;
 
     // ---- offence ----
+    if (this.pending) {
+      if (this.t > this.pending.until || out.block) this.pending = null;
+      else if (gap <= me.data.reach[this.pending.kind] - 0.04) {
+        if (me.canAct) {
+          out.presses.push(this.pending.kind === 'uppercut' ? 'upper' : this.pending.kind);
+          this.pending = null;
+        }
+        return out;
+      } else {
+        out.move = toward; // step in to land it
+        return out;
+      }
+    }
     if (this.combo.length && me.canAct && !out.block) {
       out.presses.push(this.combo.shift());
       return out;
@@ -95,16 +108,16 @@ export class CPU {
     this.thinkT = a + Math.random() * (b - a);
     if (me.stamina < 14) return out;
 
-    if (me.sig >= 3 && gap < (me.data.id === 'dayo' ? 1.3 : 1.35) && Math.random() < 0.7) {
+    if (me.sig >= 3 && gap < me.data.reach.jab - 0.05 && Math.random() < 0.7) {
       out.presses.push('sig');
       return out;
     }
     const pressing = opp.state === 'stun' || opp.state === 'hit' || opp.tired;
     if (Math.random() > this.lv.aggro + (pressing ? 0.25 : 0)) return out;
     const kind = this.pick();
-    if (gap > MOVES[kind].reach) {
-      // out of range for that punch: step in and jab instead if it reaches
-      if (gap <= MOVES.jab.reach) out.presses.push('jab');
+    if (gap > me.data.reach[kind] - 0.04) {
+      // out of range for that punch: commit to stepping in and throwing it
+      if (gap < me.data.reach[kind] + 0.6) this.pending = { kind, until: this.t + 0.6 };
       return out;
     }
     out.presses.push(kind === 'uppercut' ? 'upper' : kind);

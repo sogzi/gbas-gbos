@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { MOVES, RULES } from './data.js';
 import { sfx } from './audio.js';
+import { Body } from './physics.js';
 
 const FADE = 0.09;
 
@@ -36,6 +37,11 @@ export class Fighter {
     this.mixer.addEventListener('finished', (e) => this._onFinished(e.action));
 
     const s = data.stats;
+    // a physics body on the skeleton; the slugger is thicker through the middle
+    this.body = new Body(this.model, data.id === 'bisi' ? 0.19 : 0.16);
+    // mass in kg: heavier fighters push lighter ones and get knocked about less
+    this.mass = 62 + s.power * 2 + s.stamina * 1.2;
+    this.accel = 6 + s.speed * 0.9;
     this.powerMul = 0.55 + s.power * 0.09;
     this.defMul = 1.2 - s.defence * 0.05;
     this.walkSpeed = 1.05 + s.speed * 0.07;
@@ -46,7 +52,8 @@ export class Fighter {
   reset(full) {
     this.time = this.time ?? 0;
     this.x = this.side * 1.6;
-    this.vx = 0;
+    this.vx = 0; // impulses: knockback, rope rebound, being shoved
+    this.v = 0; // footwork velocity
     this.hp = 100;
     this.shownHp = 100;
     this.stamina = 100;
@@ -68,6 +75,10 @@ export class Fighter {
     this.lastMoveKind = null;
     this.lastMoveEnd = -10;
     this.root.position.set(this.x, 0, 0);
+    for (const sp of [this.body.headSpring, this.body.torsoSpring]) {
+      sp.a.set(0, 0, 0);
+      sp.v.set(0, 0, 0);
+    }
     this.mixer.stopAllAction();
     this.cur = null;
     this.play('Idle', { loop: true, fade: 0 });
@@ -157,11 +168,15 @@ export class Fighter {
     this.move = {
       kind, ...base, clip, dur, hitAt: base.hit * dur, done: false,
       dmgMul: (opts.dmgMul ?? 1) * (this.tired ? 0.6 : 1), stun: opts.stun ?? 0, blockMul: opts.blockMul ?? 1,
-      sig: opts.sig ?? null, reach: base.reach + (opts.reachAdd ?? 0),
+      sig: opts.sig ?? null, hand: base.hand,
     };
     this.state = 'punch';
     this.stateT = 0;
     this.stats.thrown++;
+    // step into the shot: straights carry the body forward, hooks and uppercuts rotate in place
+    this.vx += this.facing * (kind === 'jab' || kind === 'cross' ? 0.55 : 0.25) * (opts.sig ? 1.2 : 1);
+    // and lean the torso into it, which is where the last few centimetres of reach come from
+    this.body.nudge('torso', kind === 'uppercut' ? 0.8 : kind === 'hook' ? 2.0 : 3.4, 0, 0);
     this.play(clip, { timeScale: ts, fade: 0.06 });
     sfx.whoosh(ts);
     return true;
@@ -173,11 +188,11 @@ export class Fighter {
     if (this.data.id === 'dayo') {
       // Last Stop: jab, cross, jab, cross, hook
       const seq = ['jab', 'cross', 'jab', 'cross', 'hook'];
-      this.queue = seq.slice(1).map((k, i) => ({ kind: k, opts: { sig: 'Last Stop', timeScale: 1.55, dmgMul: i === 3 ? 1.5 : 0.85, blockMul: 3, reachAdd: 0.06 } }));
-      this.punch(seq[0], { sig: 'Last Stop', timeScale: 1.55, dmgMul: 0.85, blockMul: 3, reachAdd: 0.06, force: true });
+      this.queue = seq.slice(1).map((k, i) => ({ kind: k, opts: { sig: 'Last Stop', timeScale: 1.55, dmgMul: i === 3 ? 1.5 : 0.85, blockMul: 3 } }));
+      this.punch(seq[0], { sig: 'Last Stop', timeScale: 1.55, dmgMul: 0.85, blockMul: 3, force: true });
     } else {
       // Pepper Soup: a slow overhand right that stuns for two seconds
-      this.punch('cross', { sig: 'Pepper Soup', timeScale: 0.62, dmgMul: 2.6, stun: 2.0, blockMul: 2, reachAdd: 0.08, force: true });
+      this.punch('cross', { sig: 'Pepper Soup', timeScale: 0.62, dmgMul: 2.6, stun: 2.0, blockMul: 2, force: true });
     }
     return true;
   }
@@ -211,10 +226,13 @@ export class Fighter {
   // ---------- being hit ----------
   takeHit(move, dmg, attacker) {
     this.hp = Math.max(0, this.hp - dmg);
+    this.vx += -this.facing * (0.45 + dmg * 0.11) * (78 / this.mass);
+    if (this.hp <= 0) return 'down';
+    // a slugger walks through light shots: they hurt, but don't stop her punch
+    const slugger = this.data.style === 'Slugger';
+    if (slugger && !move.stun && (dmg < 2.2 || (this.state === 'punch' && dmg < 3.5))) return 'absorbed';
     this.queue = [];
     this.buffered = null;
-    this.vx += -this.facing * (0.5 + dmg * 0.09);
-    if (this.hp <= 0) return 'down';
     if (move.stun) {
       this.state = 'stun';
       this.stateT = 0;
@@ -224,7 +242,7 @@ export class Fighter {
     }
     this.state = 'hit';
     this.stateT = 0;
-    this.hitFor = this.clipLen(move.react) * 0.85;
+    this.hitFor = this.clipLen(move.react) * (slugger ? 0.55 : 0.85);
     this.play(move.react, { fade: 0.04 });
     return 'hit';
   }
@@ -263,6 +281,7 @@ export class Fighter {
 
   // ---------- per frame ----------
   update(dt, opp, match) {
+    this.opp = opp;
     this.time += dt;
     this.stateT += dt;
     const moving = this.canAct && Math.abs(this.moveIntent) > 0.05;
@@ -270,12 +289,8 @@ export class Fighter {
     switch (this.state) {
       case 'punch': {
         const m = this.move;
-        if (!m.done && this.stateT >= m.hitAt) {
-          m.done = true;
-          match.resolve(this, opp, m);
-        }
-        // step into straight punches a touch
-        if (this.stateT < m.hitAt) this.x += this.facing * 0.35 * dt;
+        // the glove has to actually reach something: swept against the opponent each frame
+        if (!m.done && this.stateT >= m.hitAt * 0.45) match.contact(this, opp, m);
         if (this.stateT >= m.dur * 0.82) {
           this.lastMoveKind = m.kind;
           this.lastMoveEnd = this.time;
@@ -318,15 +333,28 @@ export class Fighter {
     }
 
     // footwork
-    if (moving) {
-      const sp = this.walkSpeed * (this.state === 'block' ? 0.45 : 1) * (this.tired ? 0.7 : 1);
-      this.x += this.moveIntent * sp * dt;
-      if (this.state === 'idle' && this.cur) this.cur.setEffectiveTimeScale(1.7);
-    } else if (this.state === 'idle' && this.cur && this.cur === this.actions.Idle) {
-      this.cur.setEffectiveTimeScale(1);
+    const sp = this.walkSpeed * (this.state === 'block' ? 0.45 : 1) * (this.tired ? 0.7 : 1);
+    const want = moving ? this.moveIntent * sp : 0;
+    const prevV = this.v;
+    const dv = want - this.v;
+    const a = (moving ? this.accel : this.accel * 1.6) * dt;
+    this.v += Math.max(-a, Math.min(a, dv));
+    if (!this.canAct && this.state !== 'punch') this.v *= Math.exp(-dt * 12);
+    if (moving && this.state === 'idle' && this.cur) this.cur.setEffectiveTimeScale(1 + Math.abs(this.v) / sp * 0.7);
+    else if (this.state === 'idle' && this.cur && this.cur === this.actions.Idle) this.cur.setEffectiveTimeScale(1);
+    // the ropes: a stiff spring past the ring edge sends you back in
+    const over = Math.abs(this.x) - RULES.ringHalf;
+    if (over > 0 && this.state !== 'down') {
+      const sgn = Math.sign(this.x);
+      this.vx -= sgn * (over * 260 * (75 / this.mass)) * dt;
+      if (Math.sign(this.vx) === sgn) this.vx *= Math.exp(-dt * 4);
+      if (Math.sign(this.v) === sgn) this.v *= Math.exp(-dt * 14);
     }
-    this.x += this.vx * dt;
-    this.vx *= Math.exp(-dt * 9);
+    this.x += (this.v + this.vx) * dt;
+    this.vx *= Math.exp(-dt * (this.state === 'down' ? 6 : 5.5));
+    // head lags behind sudden changes of speed
+    const acc = (this.v - prevV) / Math.max(dt, 1e-3);
+    this.body.nudge('head', -acc * this.facing * 0.004, 0, 0);
 
     // stamina
     if (this.state !== 'punch' && this.state !== 'down') {
@@ -336,10 +364,35 @@ export class Fighter {
     this.shownHp += (this.hp - this.shownHp) * Math.min(1, dt * 1.6);
 
     this.root.position.x = this.x;
+    this.animate(dt);
+  }
+
+  // pose: animation first, then the physics springs on top, then refresh the hit volumes
+  animate(dt) {
+    this.body.restore();
     this.mixer.update(dt);
+    this.body.update(dt);
+    const m = this.move;
+    if (this.state === 'punch' && m && this.opp) {
+      // punches are thrown at the opponent's head: tracked until the fighter commits,
+      // then locked, so a slip or a step back makes it miss
+      const target = () => {
+        const t = this.opp.body.headC.clone();
+        if (m.kind === 'uppercut') t.y -= 0.07; // under the chin
+        if (m.kind === 'hook') t.y -= 0.02;
+        return t;
+      };
+      if (!m.lock && this.stateT >= m.hitAt * 0.55) m.lock = target();
+      const tgt = m.lock ?? target();
+      const k = this.stateT;
+      const rise = THREE.MathUtils.smoothstep(k, 0, m.hitAt);
+      const fall = 1 - THREE.MathUtils.smoothstep(k, m.hitAt + 0.04, m.dur * 0.85);
+      this.body.aim(m.hand, tgt, rise * fall * (m.aimW ?? 1));
+    }
+    this.body.sample(dt);
   }
 
   clamp() {
-    this.x = THREE.MathUtils.clamp(this.x, -RULES.ringHalf, RULES.ringHalf);
+    this.x = THREE.MathUtils.clamp(this.x, -RULES.ringHalf - 0.3, RULES.ringHalf + 0.3);
   }
 }
