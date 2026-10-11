@@ -5,6 +5,8 @@
 import { CHAPTERS, EXTRA_FIGHTERS, BARKS, TUTORIAL } from './chapters.js';
 import { save, askToPersist, isMemoryOnly, isInstalled } from './save.js';
 import { FIGHTERS } from '../data.js';
+import { createMovie } from './movie/player.js';
+import { FILMS } from './movie/films.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -35,6 +37,7 @@ export function createStory(g) {
   let scene = null; // { panels, i, done }
   let fx = null; // per-fight UI state
   let resetArmed = false;
+  const movie = createMovie({ renderer: g.renderer, loadModel: g.loadModel });
 
   // ---------- mode card and map ----------
   function progressText() {
@@ -186,7 +189,9 @@ export function createStory(g) {
     e.stopPropagation();
     skip();
   });
+  $('mv-skip').addEventListener('click', () => movie.stop());
   window.addEventListener('keydown', (e) => {
+    if (movie.playing && e.code === 'Escape') return movie.stop();
     if (!scene || e.repeat) return;
     if (e.code === 'Escape') skip();
     else if (['Enter', 'Space', 'KeyJ', 'ArrowRight'].includes(e.code)) {
@@ -202,6 +207,7 @@ export function createStory(g) {
     ch = CHAPTERS.find((c) => c.n === n);
     if (!ch || !save.unlocked(n)) return;
     active = true;
+    $('modes').classList.add('hidden');
     $('story').classList.add('hidden');
     $('chapter-end').classList.add('hidden');
     $('scene-tag').textContent = 'LOADING…';
@@ -209,7 +215,15 @@ export function createStory(g) {
     $('scene-cap').innerHTML = `<b>${esc(ch.title.toUpperCase())}</b>CHAPTER ${ch.n} · ${esc(ch.district.toUpperCase())}`;
     $('scene-who').textContent = $('scene-line').textContent = '';
     $('scene').classList.remove('hidden');
-    const ok = await g.setupPair(storyFighter('dayo'), storyFighter(ch.opp));
+    // the first time through, the cold open is a movie; a retry goes straight to the face-off
+    const film = !save.seen(ch.n) && FILMS[ch.n];
+    let ok = true;
+    try {
+      [ok] = await Promise.all([g.setupPair(storyFighter('dayo'), storyFighter(ch.opp)), film && movie.prepare(film)]);
+    } catch (e) {
+      console.error(e);
+      ok = false;
+    }
     if (id !== playId) return;
     if (!ok) {
       $('scene-tag').textContent = 'COULD NOT LOAD THE FIGHTERS';
@@ -219,12 +233,19 @@ export function createStory(g) {
     placeForScene();
     const tag = `CHAPTER ${ch.n} · ${ch.district.toUpperCase()}`;
     const title = { title: ch.title.toUpperCase(), cap: tag, focus: 'both' };
-    // a retry goes straight to the face-off
-    const panels = save.seen(ch.n) ? [title, ...ch.faceoff] : [title, ...ch.open, ...ch.faceoff];
-    runScene(panels, tag, () => {
+    const faceoff = () => runScene(film ? ch.faceoff : [title, ...ch.faceoff], tag, () => {
       save.markSeen(ch.n);
       fight();
     });
+    if (film) {
+      hideScene();
+      g.setMode('movie');
+      movie.start(film, tag, () => {
+        if (id !== playId) return;
+        g.setMode('scene');
+        faceoff();
+      });
+    } else faceoff();
   }
 
   function fight() {
@@ -550,7 +571,7 @@ export function createStory(g) {
   }
 
   return {
-    showMap, play, quit, skip, renderModeCard,
+    showMap, play, quit, skip, renderModeCard, movie,
     get active() { return active; },
     get scene() { return scene && { i: scene.i, n: scene.panels.length, panel: scene.panels[scene.i] }; },
     get chapter() { return ch?.n ?? null; },

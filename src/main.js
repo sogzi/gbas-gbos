@@ -308,6 +308,8 @@ $('menu-back').addEventListener('click', () => {
 const story = createStory({
   hud,
   isTouch,
+  renderer,
+  loadModel: load,
   async setupPair(a, b) {
     staged = 'story';
     return setupPair(a, b);
@@ -444,6 +446,15 @@ function frame() {
     fighters.forEach((f) => f.animate(dt));
     ref?.update(dt);
     if (mode === 'scene') fx?.update(dt);
+  }
+  if (mode === 'movie') {
+    // a Story cold open: its own set, camera and timeline
+    story.movie.update(dt);
+    if (mode === 'movie') {
+      story.movie.render();
+      requestAnimationFrame(frame);
+      return;
+    }
   }
   updateCamera(dt);
   renderer.render(scene, camera);

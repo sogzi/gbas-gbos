@@ -68,7 +68,8 @@ Animation drives the bodies and physics layers on top. It is not a full ragdoll.
 
 Dayo, a danfo conductor, fights one champion per district to stop the Landlord's quit notices: Tunde (Oshodi), Bisi (Ojuelegba), Emeka (Ikeja), Femi (Yaba), Kola (Mushin) and Chief Adewale (Lagos Island).
 
-- **Scenes:** each chapter opens and closes with captioned panels over the live 3D fighters. Tap, Enter or Space moves on, and Skip (or Esc) jumps to the fight. A retry goes straight to the face-off.
+- **Cold-open movies:** the first time through, each chapter opens with a short animated movie shot on a Lagos street set, redressed per district and lit for the time of day (Oshodi at dawn through to Lagos Island at night). Chapter 1 opens on Oshodi waking up, then Dayo hanging off a moving danfo. Skip (or Esc) jumps straight on. The movies live in `src/story/movie/`: `set.js` (the street, traffic, crowd, lighting), `actor.js` (fighter models posed with IK, with bare hands), `films.js` (blocking and camera for each chapter) and `player.js`.
+- **Scenes:** the face-off before a fight and the scenes after it are captioned panels over the live 3D fighters. Tap, Enter or Space moves on, and Skip (or Esc) jumps to the fight. A retry skips the movie and goes straight to the face-off.
 - **Twists:** every chapter after Oshodi has one twist and one optional bonus goal for extra Street Rep:
   - Ojuelegba: land 10 body shots (hooks).
   - Ikeja: Emeka dodges more; land 3 punches straight off a duck.
