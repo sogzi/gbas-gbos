@@ -25,8 +25,16 @@
         <h1>GBAS GBOS!</h1>
         <div class="sub">Quick match · 3 rounds · vs CPU</div>
       </header>
-      <div class="pick-label">CHOOSE YOUR FIGHTER <span class="muted">(CPU takes the other)</span></div>
-      <div class="picks" id="picks"></div>
+      <div class="corners">
+        <button id="slot-p1" class="slot p1"><div class="ph"></div><div><div class="k">P1<span> · RED CORNER</span></div><div class="nm"></div><div class="nk"></div></div></button>
+        <div class="vs">VS</div>
+        <button id="slot-cpu" class="slot cpu"><div><div class="k">CPU<span> · BLUE CORNER</span></div><div class="nm"></div><div class="nk"></div></div><div class="ph"></div></button>
+      </div>
+      <div class="pick-label">CHOOSE YOUR FIGHTERS <span class="muted">Tap a corner, then a fighter. Mirror matches are fine.</span></div>
+      <div class="select">
+        <div class="picks" id="picks"></div>
+        <div class="detail" id="detail"></div>
+      </div>
       <div class="row">
         <div class="seg" id="difficulty" role="radiogroup" aria-label="CPU difficulty">
           <button data-v="easy" role="radio">EASY</button>
@@ -42,6 +50,7 @@
         <span><kbd>L</kbd> Uppercut</span>
         <span><kbd>Space</kbd> Block</span>
         <span><kbd>Shift</kbd> Slip</span>
+        <span><kbd>S</kbd> Duck</span>
         <span><kbd class="y">J + L</kbd> Signature</span>
       </div>
     </div>
@@ -87,6 +96,7 @@
       <span><kbd>L</kbd> Uppercut</span>
       <span><kbd>Space</kbd> Block</span>
       <span><kbd>Shift</kbd> Slip</span>
+      <span><kbd>S</kbd> Duck</span>
       <span><kbd class="y">J + L</kbd> Signature</span>
     </div>
   </section>
@@ -95,6 +105,7 @@
   <section id="touch" class="hidden" aria-hidden="true">
     <div class="pad-l">
       <button data-k="left" class="t-btn t-move">◀</button>
+      <button data-k="duck" class="t-btn t-move t-duck">DUCK</button>
       <button data-k="right" class="t-btn t-move">▶</button>
     </div>
     <div class="pad-r">

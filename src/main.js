@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { FIGHTERS } from './data.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { FIGHTERS, ROSTER, UNLOCK_NOTE } from './data.js';
 import { buildArena } from './arena.js';
 import { Fighter } from './fighter.js';
 import { Referee } from './referee.js';
@@ -42,8 +43,9 @@ if (isTouch) document.body.classList.add('touch');
 // ---------- state ----------
 const hud = new HUD();
 const input = new Input();
-const models = {};
-let p1Pick = 'dayo';
+const models = {}; // id -> loading promise of the GLTF
+let picks = { p1: 'dayo', cpu: 'bisi' };
+let slot = 'p1'; // which corner the next tap on a fighter fills
 let level = 'normal';
 let match = null;
 let fighters = null;
@@ -52,7 +54,9 @@ let mode = 'menu';
 
 // ---------- loading ----------
 const loader = new GLTFLoader();
-const load = (id) => new Promise((res, rej) => loader.load(`/models/${id}.glb`, res, undefined, rej));
+const load = (id) => (models[id] ??= new Promise((res, rej) => loader.load(`/models/${id}.glb`, res, undefined, rej)));
+// each fighter gets its own copy of the skeleton, so mirror matches work
+const instance = (gltf) => ({ scene: SkeletonUtils.clone(gltf.scene), animations: gltf.animations });
 
 let arena = null;
 let fx = null;
@@ -61,62 +65,115 @@ async function boot() {
   arena = buildArena(scene);
   fx = new Impacts(scene);
   try {
-    const [d, b, r] = await Promise.all([load('dayo'), load('bisi'), load('ref')]);
-    models.dayo = d;
-    models.bisi = b;
-    models.ref = r;
+    ref = new Referee(await load('ref'));
   } catch (e) {
-    $('loading').textContent = 'Could not load the fighters. Refresh to try again.';
+    $('loading').textContent = 'Could not load the referee. Refresh to try again.';
     console.error(e);
     return;
   }
-  ref = new Referee(models.ref);
   scene.add(ref.root);
-  $('loading').classList.add('hidden');
-  $('fight-btn').disabled = false;
-  setupFighters();
+  await setupFighters();
   showMenu();
 }
 
-function setupFighters() {
-  if (fighters) {
-    scene.remove(fighters[0].root, fighters[1].root);
+// load just the two fighters picked, then put them in the ring
+let setupId = 0;
+async function setupFighters() {
+  const id = ++setupId;
+  const { p1: a, cpu: b } = picks;
+  $('fight-btn').disabled = true;
+  $('loading').classList.remove('hidden');
+  $('loading').textContent = `Loading ${FIGHTERS[a].firstName}${a === b ? '' : ` and ${FIGHTERS[b].firstName}`}…`;
+  let ga, gb;
+  try {
+    [ga, gb] = await Promise.all([load(a), load(b)]);
+  } catch (e) {
+    delete models[a];
+    delete models[b];
+    $('loading').textContent = 'Could not load the fighters. Pick again or refresh.';
+    console.error(e);
+    return false;
   }
-  const cpuPick = p1Pick === 'dayo' ? 'bisi' : 'dayo';
-  const p1 = new Fighter(models[p1Pick], FIGHTERS[p1Pick], -1);
-  const p2 = new Fighter(models[cpuPick], FIGHTERS[cpuPick], 1);
+  if (id !== setupId) return false; // the picks changed while this was loading
+  if (fighters) scene.remove(fighters[0].root, fighters[1].root);
+  const p1 = new Fighter(instance(ga), FIGHTERS[a], -1);
+  const p2 = new Fighter(instance(gb), FIGHTERS[b], 1);
   scene.add(p1.root, p2.root);
   fighters = [p1, p2];
+  if (mode === 'menu') placeForMenu();
+  $('loading').classList.add('hidden');
+  $('fight-btn').disabled = false;
+  return true;
+}
+
+function placeForMenu() {
+  fighters.forEach((f) => f.reset(true));
+  fighters[0].x = -1.1;
+  fighters[1].x = 1.1;
+  fighters.forEach((f) => (f.root.position.x = f.x));
 }
 
 // ---------- menu ----------
+const STATS = ['power', 'speed', 'stamina', 'defence'];
+const surname = (f) => f.fullName.split(' ').slice(1).join(' ');
+
 function renderPicks() {
-  const el = $('picks');
-  el.innerHTML = '';
-  for (const id of ['dayo', 'bisi']) {
-    const f = FIGHTERS[id];
-    const on = id === p1Pick;
-    const b = document.createElement('button');
-    b.className = 'pick' + (on ? ' on' : '');
-    b.setAttribute('aria-pressed', on);
-    b.innerHTML = `
-      <div class="ph" style="background-image:url(/img/${id}.jpg)"></div>
-      <div class="nm">${f.firstName.toUpperCase()} ${f.fullName.split(' ')[1].toUpperCase()}</div>
-      <div class="nk">“${f.nickname.toUpperCase()}”</div>
-      <div class="meta">${f.district} · ${f.style}</div>
-      <div class="tag">${on ? 'P1 · RED CORNER' : 'CPU · BLUE CORNER'}</div>
-      <div class="stats" style="grid-column:1/-1">
-        ${['power', 'speed', 'stamina', 'defence'].map((k) => `<span>${k.toUpperCase()}</span><div class="bar"><i style="width:${f.stats[k] * 10}%"></i></div>`).join('')}
-      </div>
-      <div class="sig"><b>${f.signature.name}:</b> ${f.signature.effect}</div>`;
-    b.addEventListener('click', () => {
-      if (p1Pick === id) return;
-      p1Pick = id;
-      renderPicks();
-      if (models.dayo) setupFighters();
-    });
-    el.appendChild(b);
+  // the two corners: tap one, then tap a fighter
+  for (const k of ['p1', 'cpu']) {
+    const f = FIGHTERS[picks[k]];
+    const el = $(`slot-${k}`);
+    el.classList.toggle('on', slot === k);
+    el.setAttribute('aria-pressed', slot === k);
+    el.querySelector('.ph').style.backgroundImage = `url(/img/${f.id}.jpg)`;
+    el.querySelector('.nm').textContent = f.firstName.toUpperCase();
+    el.querySelector('.nk').textContent = `“${f.nickname}”`;
   }
+  const grid = $('picks');
+  grid.innerHTML = '';
+  ROSTER.forEach((id, i) => {
+    const f = FIGHTERS[id];
+    const tags = [picks.p1 === id && '<i class="t1">P1</i>', picks.cpu === id && '<i class="t2">CPU</i>'].filter(Boolean).join('');
+    const b = document.createElement('button');
+    b.className = 'pick' + (picks[slot] === id ? ' on' : '') + (picks.p1 === id || picks.cpu === id ? ' taken' : '');
+    b.setAttribute('aria-pressed', picks[slot] === id);
+    b.setAttribute('aria-label', `${f.fullName}, ${f.style}`);
+    b.innerHTML = `
+      <div class="ph" style="background-image:url(/img/${id}.jpg)"><span class="no">0${i + 1}</span><span class="tags">${tags}</span></div>
+      <div class="nm">${f.firstName.toUpperCase()}</div>
+      <div class="nk">“${f.nickname}”</div>
+      <div class="meta">${f.district}</div>`;
+    b.addEventListener('click', () => choose(id));
+    grid.appendChild(b);
+  });
+  // details of whoever the active corner has
+  const f = FIGHTERS[picks[slot]];
+  $('detail').innerHTML = `
+    <div class="d-head">
+      <div><div class="d-dist">${f.district.toUpperCase()}</div>
+      <div class="d-name">${f.firstName.toUpperCase()} ${surname(f).toUpperCase()}</div>
+      <div class="d-nick">“${f.nickname}”</div></div>
+    </div>
+    <p class="d-bio">${f.bio}</p>
+    <div class="d-style"><b>${f.style}</b> · ${f.tagline}</div>
+    <div class="stats">${STATS.map((k) => `<span>${k.toUpperCase()}</span><div class="bar"><i style="width:${f.stats[k] * 10}%"></i></div><b>${f.stats[k]}</b>`).join('')}</div>
+    <div class="sig"><span>SIGNATURE · ${f.signature.name.toUpperCase()}</span>${f.signature.effect}</div>
+    <div class="unlock">${UNLOCK_NOTE[f.unlock] ?? ''}${f.unlock === 'starter' ? '' : ' · open in Quick Match for the demo'}</div>`;
+}
+
+function choose(id) {
+  const changed = picks[slot] !== id;
+  picks[slot] = id;
+  // fill P1 first, then hand the tap over to the CPU corner
+  if (slot === 'p1') slot = 'cpu';
+  renderPicks();
+  if (changed) setupFighters();
+}
+
+for (const k of ['p1', 'cpu']) {
+  $(`slot-${k}`).addEventListener('click', () => {
+    slot = k;
+    renderPicks();
+  });
 }
 
 document.querySelectorAll('#difficulty button').forEach((b) => {
@@ -141,16 +198,15 @@ function showMenu() {
   hud.hideFlash();
   hud.count(null);
   if (fighters) {
-    fighters.forEach((f) => f.reset(true));
-    fighters[0].x = -1.1;
-    fighters[1].x = 1.1;
-    fighters.forEach((f) => (f.root.position.x = f.x));
+    placeForMenu();
     ref.reset();
   }
+  slot = 'p1';
   renderPicks();
 }
 
 function startFight() {
+  if (!fighters || $('fight-btn').disabled) return;
   unlockAudio();
   $('menu').classList.add('hidden');
   $('results').classList.add('hidden');
@@ -289,6 +345,12 @@ frame();
 // handy for debugging and automated tests
 window.__gg = {
   get match() { return match; }, get fighters() { return fighters; }, get mode() { return mode; }, start: startFight,
+  // pick both corners and wait for the models: await __gg.pick('kola', 'femi')
+  async pick(p1, cpu) {
+    picks = { p1, cpu };
+    renderPicks();
+    return setupFighters();
+  },
   // advance the game without rendering: sim(seconds) steps at 60 Hz
   sim(seconds) {
     for (let t = 0; t < seconds && (mode === 'fight' || mode === 'results'); t += 1 / 60) match.update(1 / 60);

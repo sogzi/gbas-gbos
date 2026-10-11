@@ -8,7 +8,7 @@ const FADE = 0.09;
 
 export class Fighter {
   /**
-   * @param gltf  loaded model with clips Idle, Jab, Cross, Hook, Block, Victory, Uppercut, Slip, Hit, HitBody, Down
+   * @param gltf  loaded model with clips Idle, Jab, Cross, Hook, Block, Victory, Uppercut, Slip, Duck, Hit, HitBody, Down
    * @param data  entry from FIGHTERS
    * @param side  -1 = red corner on the left (faces +x), +1 = blue corner on the right (faces -x)
    */
@@ -37,8 +37,8 @@ export class Fighter {
     this.mixer.addEventListener('finished', (e) => this._onFinished(e.action));
 
     const s = data.stats;
-    // a physics body on the skeleton; the slugger is thicker through the middle
-    this.body = new Body(this.model, data.id === 'bisi' ? 0.19 : 0.16);
+    // a physics body on the skeleton; heavier builds are thicker through the middle
+    this.body = new Body(this.model, data.torso ?? 0.16);
     // mass in kg: heavier fighters push lighter ones and get knocked about less
     this.mass = 62 + s.power * 2 + s.stamina * 1.2;
     this.accel = 6 + s.speed * 0.9;
@@ -71,6 +71,8 @@ export class Fighter {
     this.queue = [];
     this.buffered = null;
     this.blockHeld = false;
+    this.after = null; // a punch to throw when the current dodge ends (Express Lane)
+    this.ironUntil = -1; // No Shaking: no hit-stun until this time
     this.moveIntent = 0;
     this.lastMoveKind = null;
     this.lastMoveEnd = -10;
@@ -140,7 +142,21 @@ export class Fighter {
 
   get isSlipping() {
     if (this.state !== 'slip') return false;
-    return this.stateT > 0.04 && this.stateT < this.slipDur * 0.7;
+    // Express Lane is clear from its first frame
+    return this.stateT > (this.after ? 0 : 0.04) && this.stateT < this.slipDur * (this.after ? 0.85 : 0.7);
+  }
+
+  // low enough that straights and hooks to the head go over
+  get isDucking() {
+    return this.state === 'duck' && this.stateT > 0.03 && this.stateT < this.duckDur * 0.7;
+  }
+
+  get isParrying() {
+    return this.state === 'parry';
+  }
+
+  get iron() {
+    return this.time < this.ironUntil;
   }
 
   get canAct() {
@@ -182,19 +198,70 @@ export class Fighter {
     return true;
   }
 
+  // returns the signature's name when it fires, or false
   signature() {
     if (this.sig < 3 || !this.canAct) return false;
     this.sig = 0;
-    if (this.data.id === 'dayo') {
-      // Last Stop: jab, cross, jab, cross, hook
-      const seq = ['jab', 'cross', 'jab', 'cross', 'hook'];
-      this.queue = seq.slice(1).map((k, i) => ({ kind: k, opts: { sig: 'Last Stop', timeScale: 1.55, dmgMul: i === 3 ? 1.5 : 0.85, blockMul: 3 } }));
-      this.punch(seq[0], { sig: 'Last Stop', timeScale: 1.55, dmgMul: 0.85, blockMul: 3, force: true });
-    } else {
-      // Pepper Soup: a slow overhand right that stuns for two seconds
-      this.punch('cross', { sig: 'Pepper Soup', timeScale: 0.62, dmgMul: 2.6, stun: 2.0, blockMul: 2, force: true });
+    const name = this.data.signature.name;
+    switch (this.data.id) {
+      case 'dayo': {
+        // Last Stop: jab, cross, jab, cross, hook
+        const seq = ['jab', 'cross', 'jab', 'cross', 'hook'];
+        this.queue = seq.slice(1).map((k, i) => ({ kind: k, opts: { sig: name, timeScale: 1.55, dmgMul: i === 3 ? 1.5 : 0.85, blockMul: 3 } }));
+        this.punch(seq[0], { sig: name, timeScale: 1.55, dmgMul: 0.85, blockMul: 3, force: true });
+        break;
+      }
+      case 'bisi':
+        // Pepper Soup: a slow overhand right that stuns for two seconds
+        this.punch('cross', { sig: name, timeScale: 0.62, dmgMul: 2.6, stun: 2.0, blockMul: 2, force: true });
+        break;
+      case 'emeka':
+        // Express Lane: a long slip that nothing can touch, carrying him in, then a hook and a cross from the side
+        this.slip({ free: true, timeScale: 0.9, dash: 0.9 });
+        this.after = { kind: 'hook', opts: { sig: name, timeScale: 1.25, dmgMul: 1.7, blockMul: 2.5 } };
+        this.queue = [{ kind: 'cross', opts: { sig: name, timeScale: 1.25, dmgMul: 1.3, blockMul: 2 } }];
+        break;
+      case 'femi':
+        // Hotfix: hold a parry for 1.2 s; whatever lands in it is turned away and answered (see Match.resolve)
+        this.state = 'parry';
+        this.stateT = 0;
+        this.parryFor = 1.2;
+        this.blockAction = this.play('Block', { timeScale: 2.2, fade: 0.05 });
+        this.blockPeak = this.clipLen('Block') * 0.5;
+        sfx.whoosh(0.8);
+        break;
+      case 'kola':
+        // No Shaking: three seconds of no hit-stun while stamina pours back in
+        this.ironUntil = this.time + 3;
+        sfx.block();
+        break;
+      case 'chief':
+        // Quit Notice: a heavy overhand right; the instant KO is decided in Match.resolve
+        this.punch('cross', { sig: name, timeScale: 0.75, dmgMul: 2.0, blockMul: 2, force: true });
+        break;
+      default:
+        return false;
     }
-    return true;
+    // punch signatures get their callout when they land; the rest announce themselves now
+    this.sigFresh = this.state === 'punch';
+    return name;
+  }
+
+  // Hotfix landed: drop the parry and fire the counter
+  counter() {
+    this.state = 'idle';
+    this.punch('cross', { sig: this.data.signature.name, timeScale: 1.35, dmgMul: 2.0, blockMul: 2, force: true });
+  }
+
+  // knocked off balance without damage (a parried punch)
+  stagger(t) {
+    this.queue = [];
+    this.buffered = null;
+    this.after = null;
+    this.state = 'stun';
+    this.stateT = 0;
+    this.stunFor = t;
+    this.play('Hit', { fade: 0.04 });
   }
 
   startBlock() {
@@ -212,14 +279,29 @@ export class Fighter {
     if (this.state === 'block') this.toIdle(0.12);
   }
 
-  slip() {
-    if (!this.canAct || this.stamina < 6) return false;
-    this.stamina -= 6;
+  slip({ free = false, timeScale = 1.15, dash = 0 } = {}) {
+    if (!free && (!this.canAct || this.stamina < 6)) return false;
+    if (!free) this.stamina -= 6;
+    this.after = null;
     this.state = 'slip';
     this.stateT = 0;
-    this.slipDur = this.clipLen('Slip') / 1.15;
-    this.play('Slip', { timeScale: 1.15, fade: 0.05 });
+    this.slipDur = this.clipLen('Slip') / timeScale;
+    this.play('Slip', { timeScale, fade: 0.05 });
+    if (dash) this.vx += this.facing * dash;
     sfx.whoosh(1.3);
+    return true;
+  }
+
+  // bend at the waist and drop under the punch. While low (isDucking) head shots from jabs, crosses
+  // and hooks go over (Match.resolve); uppercuts and body shots still land, and an uppercut hurts more
+  duck() {
+    if (!this.canAct || this.stamina < 5) return false;
+    this.stamina -= 5;
+    this.state = 'duck';
+    this.stateT = 0;
+    this.duckDur = this.clipLen('Duck') / 1.1;
+    this.play('Duck', { timeScale: 1.1, fade: 0.05 });
+    sfx.whoosh(1.1);
     return true;
   }
 
@@ -228,11 +310,14 @@ export class Fighter {
     this.hp = Math.max(0, this.hp - dmg);
     this.vx += -this.facing * (0.45 + dmg * 0.11) * (78 / this.mass);
     if (this.hp <= 0) return 'down';
-    // a slugger walks through light shots: they hurt, but don't stop her punch
-    const slugger = this.data.style === 'Slugger';
-    if (slugger && !move.stun && (dmg < 2.2 || (this.state === 'punch' && dmg < 3.5))) return 'absorbed';
+    // No Shaking: it hurts, but nothing stops him
+    if (this.iron) return 'absorbed';
+    // sluggers and tanks walk through light shots: they hurt, but don't stop the punch
+    const arm = this.data.armour;
+    if (arm && !move.stun && (dmg < arm.light || (this.state === 'punch' && dmg < arm.punching))) return 'absorbed';
     this.queue = [];
     this.buffered = null;
+    this.after = null;
     if (move.stun) {
       this.state = 'stun';
       this.stateT = 0;
@@ -242,7 +327,7 @@ export class Fighter {
     }
     this.state = 'hit';
     this.stateT = 0;
-    this.hitFor = this.clipLen(move.react) * (slugger ? 0.55 : 0.85);
+    this.hitFor = this.clipLen(move.react) * (arm ? arm.recover : 0.85);
     this.play(move.react, { fade: 0.04 });
     return 'hit';
   }
@@ -253,6 +338,8 @@ export class Fighter {
     this.knockdowns++;
     this.queue = [];
     this.buffered = null;
+    this.after = null;
+    this.ironUntil = -1;
     this.blockHeld = false;
     this.play('Down', { fade: 0.06 });
     setTimeout(() => sfx.fall(), 650);
@@ -294,6 +381,7 @@ export class Fighter {
         if (this.stateT >= m.dur * 0.82) {
           this.lastMoveKind = m.kind;
           this.lastMoveEnd = this.time;
+          if (!m.landed) match.whiff?.(this, opp, m);
           if (this.queue.length) {
             const n = this.queue.shift();
             this.punch(n.kind, { ...n.opts, force: true });
@@ -312,7 +400,21 @@ export class Fighter {
         if (this.blockAction && this.blockAction.time >= this.blockPeak) this.blockAction.paused = true;
         break;
       case 'slip':
-        if (this.stateT >= this.slipDur * 0.9) this.toIdle(0.1);
+        if (this.stateT >= this.slipDur * 0.9) {
+          if (this.after) {
+            const n = this.after;
+            this.after = null;
+            this.state = 'idle';
+            this.punch(n.kind, { ...n.opts, force: true });
+          } else this.toIdle(0.1);
+        }
+        break;
+      case 'duck':
+        if (this.stateT >= this.duckDur * 0.9) this.toIdle(0.12);
+        break;
+      case 'parry':
+        if (this.blockAction && this.blockAction.time >= this.blockPeak) this.blockAction.paused = true;
+        if (this.stateT >= this.parryFor) this.toIdle(0.12);
         break;
       case 'hit':
         if (this.stateT >= this.hitFor) this.toIdle(0.12);
@@ -361,6 +463,7 @@ export class Fighter {
       const k = this.state === 'block' ? 0.4 : moving ? 0.8 : 1;
       this.stamina = Math.min(100, this.stamina + this.staminaRegen * k * dt);
     }
+    if (this.iron) this.stamina = Math.min(100, this.stamina + 22 * dt);
     this.shownHp += (this.hp - this.shownHp) * Math.min(1, dt * 1.6);
 
     this.root.position.x = this.x;

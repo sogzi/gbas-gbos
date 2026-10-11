@@ -1,5 +1,5 @@
 // Keyboard and touch input, turned into the same set of fight intents.
-//   intents: left/right held, block held, and one-shot presses jab / hook / upper / slip / sig
+//   intents: left/right held, block held, and one-shot presses jab / hook / upper / slip / duck / sig
 
 const SIG_WINDOW = 0.09; // seconds to wait for the second key of J + L
 
@@ -65,6 +65,7 @@ export class Input {
     const map = {
       KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
       Space: 'block', KeyJ: 'jab', KeyK: 'hook', KeyL: 'upper', ShiftLeft: 'slip', ShiftRight: 'slip',
+      KeyS: 'duck', ArrowDown: 'duck',
     };
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Escape' || e.code === 'KeyP') {
