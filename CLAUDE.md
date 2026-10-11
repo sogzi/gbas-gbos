@@ -38,6 +38,12 @@ If a feature truly needs a physics change, say so and ask first.
 - District rings: `src/story/venues.js` dresses the street around the ring for each chapter (signs, sky, lights, props) through `createVenues(arena).dress(n)`. It changes looks only. Never move the ring, ropes, posts or floor there. `dress(0)` restores the exact Quick Match street, and Quick Match and Mode Select always call it.
 - The script was signed off by Lade from the "Gbas Gbos Story Mode: Draft Scripts" doc. Keep lines as written unless asked.
 
+## Lagos Life
+
+- `src/lagoslife.js` wraps the Vatar Games SDK (docs: https://lagoslife.app/developers/docs). It does nothing unless the page is framed, so direct visits never load it.
+- Never trust the client for anything of value. Purchases (and any future cloud save or reward) must be verified by a server holding the `vtr_test_…`/`vtr_live_…` secret, via `POST /session/verify` and `GET /purchases/{id}`. Never put a secret in `src/`.
+- Lagos Life's review needs: play at 375×812 portrait by touch, honouring `onPause`/`onResume`, sound only after the first tap, no logins, no outside payments or ads.
+
 ## Checking things
 
 ```bash

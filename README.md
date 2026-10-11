@@ -83,6 +83,15 @@ Dayo, a danfo conductor, fights one champion per district to stop the Landlord's
 - The script lives in `src/story/chapters.js`; the controller in `src/story/story.js`; the save in `src/story/save.js`.
 - Story changes the fight only through opt-in `rules` and `hooks` on `Match` and a CPU tweak. Quick Match passes neither and plays exactly as before. The district dressing is looks-only and Quick Match never calls it.
 
+## Lagos Life
+
+Gbas Gbos can run inside Lagos Life as a Vatar game ([developer docs](https://lagoslife.app/developers/docs)). `src/lagoslife.js` only does anything when the game is opened inside another page's frame. Then it loads the Vatar SDK and does three things:
+- It shows who's playing (their Lagos Life name and avatar) on Mode Select.
+- It pauses the fight, the movie and the sound when Lagos Life says so (phone in the background, pay sheet open). A fight stays paused until the player taps Resume.
+- It posts the player's Street Rep to the game's Lagos Life leaderboard after every Story fight. **REP BOARD** on the route map shows the top 50.
+
+Opened anywhere else, nothing from Lagos Life loads and the game works as before. Purchases and anything else that grants value have to be checked by our own server with the secret key, so they aren't built yet.
+
 ## How it's built
 
 - **Vite + three.js.** No game engine. Everything is in `src/`:

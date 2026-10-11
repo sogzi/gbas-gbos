@@ -19,6 +19,14 @@ export function unlockAudio() {
   if (ctx.state === 'suspended') ctx.resume();
 }
 
+// Lagos Life pauses us when the phone goes to the background or its pay sheet opens. Only resume a
+// context the player already unlocked with a tap, so sound still never starts on its own.
+export function holdAudio(on) {
+  if (!ctx) return;
+  if (on) ctx.suspend();
+  else ctx.resume();
+}
+
 function env(g, t, a, peak, decay) {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(peak, t + a);

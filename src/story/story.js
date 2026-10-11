@@ -7,6 +7,7 @@ import { save, askToPersist, isMemoryOnly, isInstalled } from './save.js';
 import { FIGHTERS } from '../data.js';
 import { createMovie } from './movie/player.js';
 import { FILMS } from './movie/films.js';
+import { lagosLife, submitScore, leaderboard } from '../lagoslife.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -94,9 +95,10 @@ export function createStory(g) {
     if (items.length) notes.push(`<div><b>COLLECTED</b> · ${items.map(esc).join(' · ')}</div>`);
     if (!next) notes.push(`<div>${esc(CHAPTERS[CHAPTERS.length - 1].end)}</div>`);
     if (isMemoryOnly()) notes.push('<div class="warn">This browser isn’t letting the game save (private browsing?). Progress lasts until you close the tab, so grab a SAVE CODE before you go.</div>');
-    else if (isIOS() && !isInstalled()) notes.push('<div>On iPhone, add Gbas Gbos to your Home Screen (Share ▸ Add to Home Screen) so Safari keeps your progress.</div>');
+    else if (isIOS() && !isInstalled() && !lagosLife.framed) notes.push('<div>On iPhone, add Gbas Gbos to your Home Screen (Share ▸ Add to Home Screen) so Safari keeps your progress.</div>');
     else notes.push('<div>Progress saves on this device after every fight. Use SAVE CODE to back it up or move it to another phone.</div>');
     $('story-note').innerHTML = notes.join('');
+    $('story-board').classList.toggle('hidden', !lagosLife.connected);
   }
 
   function showMap() {
@@ -449,6 +451,7 @@ export function createStory(g) {
     const won = r.winner === p1;
     const bonus = won && goalMet();
     const earned = save.result(ch.n, { won, method: r.method, bonus });
+    if (save.rep() > 0) submitScore(save.rep()); // Lagos Life keeps the player's best Street Rep
     const stats = { landed: p1.stats.landed, combo: p1.stats.bestCombo };
     endFightUI();
     g.endMatch();
@@ -523,6 +526,24 @@ export function createStory(g) {
     $('save-msg').className = 'save-msg ' + (ok ? 'ok' : 'bad');
   };
   $('story-save').addEventListener('click', openSave);
+
+  // ---------- Lagos Life Street Rep board ----------
+  $('story-board').addEventListener('click', async () => {
+    $('board-dialog').classList.remove('hidden');
+    $('board-list').innerHTML = '';
+    $('board-me').textContent = 'Loading…';
+    try {
+      const b = await leaderboard();
+      const me = b?.me;
+      $('board-list').innerHTML = (b?.top || []).map((e) =>
+        `<li${me && e.rank === me.rank ? ' class="me"' : ''}><b>${esc(e.rank)}</b><span>${esc(e.name)}</span><span>${esc(e.score)} REP</span></li>`).join('')
+        || '<li><b>–</b><span>Nobody on the board yet. Win a Story fight to be first.</span><span></span></li>';
+      $('board-me').textContent = me ? `YOU · ${me.label} · ${me.score} REP` : 'Win a Story fight to get on the board.';
+    } catch (e) {
+      $('board-me').textContent = e?.code === 'rate_limited' ? 'Too many looks. Try again in a moment.' : 'Couldn’t load the board. Try again in a moment.';
+    }
+  });
+  $('board-close').addEventListener('click', () => $('board-dialog').classList.add('hidden'));
   $('save-close').addEventListener('click', () => {
     $('save-dialog').classList.add('hidden');
     renderMap();

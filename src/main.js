@@ -10,10 +10,11 @@ import { CPU } from './ai.js';
 import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { Match } from './match.js';
-import { unlockAudio } from './audio.js';
+import { unlockAudio, holdAudio } from './audio.js';
 import { Impacts } from './physics.js';
 import { createStory } from './story/story.js';
 import { inject as injectAnalytics } from '@vercel/analytics';
+import { connect as connectLagosLife, submitScore } from './lagoslife.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -347,6 +348,28 @@ $('quit-btn').addEventListener('click', () => {
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) setPause(true);
+});
+
+// ---------- Lagos Life ----------
+// Inside Lagos Life: pause when it says so (phone backgrounded, pay sheet open), show who's playing,
+// and post the Street Rep this device already has. Outside it, connect() does nothing.
+connectLagosLife({
+  onPause: () => {
+    setPause(true);
+    holdAudio(true);
+    story.movie.hold = true;
+  },
+  onResume: () => {
+    holdAudio(false);
+    story.movie.hold = false; // a fight stays paused until the player taps Resume
+  },
+}).then((player) => {
+  if (!player) return;
+  $('ll-name').textContent = player.name;
+  if (player.avatar) $('ll-avatar').src = player.avatar;
+  $('ll-chip').classList.remove('hidden');
+  $('story-board').classList.remove('hidden');
+  if (story.save.rep() > 0) submitScore(story.save.rep());
 });
 
 // ---------- results ----------
