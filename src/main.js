@@ -14,7 +14,7 @@ import { unlockAudio, holdAudio } from './audio.js';
 import { Impacts } from './physics.js';
 import { createStory } from './story/story.js';
 import { inject as injectAnalytics } from '@vercel/analytics';
-import { connect as connectLagosLife, submitScore, isOwned } from './lagoslife.js';
+import { connect as connectLagosLife, submitScore, isOwned, lagosLife } from './lagoslife.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -369,6 +369,43 @@ $('turn-skip').addEventListener('click', () => {
 portrait.addEventListener?.('change', checkTurn);
 addEventListener('resize', checkTurn);
 checkTurn();
+
+// ---------- full screen ----------
+// A button in the top-right corner of the menus (and beside pause in a fight) hides the browser's bars.
+// iPhone Safari has no full-screen for pages, so there it explains Add to Home Screen instead. Hidden
+// inside Lagos Life (its frame doesn't allow full screen) and when already running from the Home Screen.
+const canFs = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+const isIPhone = /iP(hone|od)/.test(navigator.userAgent);
+const installed = matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone === true;
+const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+if (!lagosLife.framed && !installed && (canFs || isIPhone)) {
+  document.body.classList.add('fs-ok');
+  const icon = (d) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5C518" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+  for (const host of ['modes', 'story', 'menu', 'hud']) {
+    const b = document.createElement('button');
+    b.className = 'fs-btn';
+    b.setAttribute('aria-label', 'Full screen');
+    b.innerHTML = icon('M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5') + icon('M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5');
+    b.addEventListener('click', toggleFs);
+    $(host).appendChild(b);
+  }
+  document.addEventListener('fullscreenchange', syncFs);
+  document.addEventListener('webkitfullscreenchange', syncFs);
+  addEventListener('resize', syncFs); // Esc or a back swipe leaves full screen too
+}
+function syncFs() {
+  document.body.classList.toggle('is-fs', isFs());
+  document.querySelectorAll('.fs-btn').forEach((b) => b.setAttribute('aria-label', isFs() ? 'Leave full screen' : 'Full screen'));
+}
+function toggleFs() {
+  if (!canFs) return $('fs-dialog').classList.remove('hidden');
+  const el = document.documentElement;
+  const on = isFs();
+  const go = on ? document.exitFullscreen || document.webkitExitFullscreen : el.requestFullscreen || el.webkitRequestFullscreen;
+  // a refusal (say, a browser setting) just leaves the page as it was
+  Promise.resolve(go.call(on ? document : el, { navigationUI: 'hide' })).catch(() => {}).then(syncFs);
+}
+$('fs-close').addEventListener('click', () => $('fs-dialog').classList.add('hidden'));
 
 // ---------- Lagos Life ----------
 // Inside Lagos Life: pause when it says so (phone backgrounded, pay sheet open), show who's playing,
