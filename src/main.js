@@ -13,7 +13,7 @@ import { Match } from './match.js';
 import { unlockAudio, holdAudio } from './audio.js';
 import { Impacts } from './physics.js';
 import { createStory } from './story/story.js';
-import { inject as injectAnalytics } from '@vercel/analytics';
+import { inject as injectAnalytics, pageview } from '@vercel/analytics';
 import { connect as connectLagosLife, submitScore, isOwned, lagosLife } from './lagoslife.js';
 
 const $ = (id) => document.getElementById(id);
@@ -43,6 +43,16 @@ resize();
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (isTouch) document.body.classList.add('touch');
+
+// ---------- analytics: a page view per screen ----------
+// The whole game lives at "/", so Vercel would only ever see one page. Each screen reports its own
+// path instead (the address bar never changes), which fills the Pages and Routes tabs.
+let lastView = '/'; // the script counts the first "/" itself
+function view(path, route = path) {
+  if (path === lastView) return;
+  lastView = path;
+  pageview({ route, path });
+}
 
 // ---------- state ----------
 const hud = new HUD();
@@ -226,6 +236,7 @@ document.querySelectorAll('#difficulty button').forEach((b) => {
 
 function showMenu() {
   mode = 'menu';
+  view('/quick-match');
   document.body.classList.remove('fighting');
   $('menu').classList.remove('hidden');
   $('results').classList.add('hidden');
@@ -265,6 +276,7 @@ function startMatch({ rules, hooks, level: lv, cpuTweak, onEnd } = {}) {
   if (new URLSearchParams(location.search).has('autoplay')) match.autoP1 = new CPU(p1, p2, lv ?? level);
   match.start();
   mode = 'fight';
+  if (!onEnd) view('/quick-match/fight');
 }
 
 // a story fight is over (or abandoned): drop the HUD and stop driving the match
@@ -284,6 +296,7 @@ $('fight-btn').addEventListener('click', startFight);
 // ---------- mode select ----------
 function showModes() {
   mode = 'modes';
+  view('/');
   for (const id of ['menu', 'story', 'results', 'pause', 'chapter-end', 'scene']) $(id).classList.add('hidden');
   document.body.classList.remove('fighting');
   hud.show(false);
@@ -313,6 +326,7 @@ $('menu-back').addEventListener('click', () => {
 });
 
 const story = createStory({
+  view,
   hud,
   isTouch,
   renderer,
@@ -433,6 +447,7 @@ connectLagosLife({
 // ---------- results ----------
 function showResults(r) {
   mode = 'results';
+  view('/quick-match/result');
   hud.show(false);
   $('touch').classList.add('hidden');
   document.body.classList.remove('fighting');
