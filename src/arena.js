@@ -145,6 +145,7 @@ export function buildArena(scene) {
   const postMat = { red: std(COLORS.red, 0.45), blue: std(COLORS.blue, 0.45), white: std(COLORS.chalk, 0.5) };
   const P = 3.1;
   const posts = [[-P, -P, 'red'], [P, P, 'blue'], [-P, P, 'white'], [P, -P, 'white']];
+  const pads = [];
   for (const [x, z, c] of posts) {
     const p = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 1.45, 16), postMat[c]);
     p.position.set(x, 0.72, z);
@@ -154,6 +155,7 @@ export function buildArena(scene) {
     pad.position.set(x - Math.sign(x) * 0.08, 0.72, z - Math.sign(z) * 0.08);
     pad.castShadow = true;
     root.add(pad);
+    pads.push({ mesh: pad, corner: c });
   }
   const ropeMats = [std(COLORS.red, 0.4), std(COLORS.chalk, 0.5), std(COLORS.blue, 0.4)];
   const UP = new THREE.Vector3(0, 1, 0);
@@ -329,5 +331,6 @@ export function buildArena(scene) {
   scene.add(rim);
 
   // the handles Story uses to dress the street for each district (src/story/venues.js); Quick Match never does
-  return { root, sun, ropes, scene, hemi, rim, buildings, signs: signMeshes, bus, bulbMat };
+  // and the ring's surfaces, for the opt-in Fight Night look (src/look/fightnight.js): materials only
+  return { root, sun, ropes, scene, hemi, rim, buildings, signs: signMeshes, bus, bulbMat, ring: { floor, skirt, pads, ropeMats } };
 }

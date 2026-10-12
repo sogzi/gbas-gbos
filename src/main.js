@@ -13,6 +13,7 @@ import { Match } from './match.js';
 import { unlockAudio, holdAudio } from './audio.js';
 import { Impacts } from './physics.js';
 import { createStory } from './story/story.js';
+import { lookWanted, createFightNight } from './look/fightnight.js';
 import { inject as injectAnalytics, pageview } from '@vercel/analytics';
 import { connect as connectLagosLife, submitScore, isOwned, lagosLife } from './lagoslife.js';
 
@@ -31,12 +32,14 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 120);
 const camLook = new THREE.Vector3(0, 1.0, 0);
+let look = null; // the opt-in Fight Night graphics (?look=night); null keeps today's look
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  look?.setSize(w, h);
 }
 window.addEventListener('resize', resize);
 resize();
@@ -81,6 +84,10 @@ let fx = null;
 let refReady;
 async function boot() {
   arena = buildArena(scene);
+  if (lookWanted()) {
+    look = createFightNight({ arena, renderer, scene, camera });
+    resize();
+  }
   venues = createVenues(arena);
   fx = new Impacts(scene);
   showModes();
@@ -137,6 +144,8 @@ async function setupPair(A, B) {
   const ia = instance(ga), ib = instance(gb);
   if (A.colors) tint(ia.scene, a, A.colors);
   if (B.colors) tint(ib.scene, b, B.colors);
+  look?.dressFighter(ia.scene, A.data);
+  look?.dressFighter(ib.scene, B.data);
   const p1 = new Fighter(ia, A.data, -1);
   const p2 = new Fighter(ib, B.data, 1);
   scene.add(p1.root, p2.root);
@@ -560,7 +569,10 @@ function frame() {
     }
   }
   updateCamera(dt);
-  renderer.render(scene, camera);
+  if (look) {
+    look.update(dt, fighters, mode);
+    look.render();
+  } else renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
