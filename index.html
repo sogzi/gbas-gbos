@@ -289,6 +289,33 @@
 
   <div id="rotate" class="rotate">Turn your phone sideways for the best view</div>
 
+  <!-- ===== Phones held upright: ask for landscape ===== -->
+  <section id="turn" class="turn hidden" role="dialog" aria-modal="true" aria-labelledby="turn-title">
+    <div class="stripe"></div>
+    <div class="turn-inner">
+      <div class="kicker">GBAS GBOS!</div>
+      <div class="turn-phone" aria-hidden="true">
+        <svg viewBox="0 0 120 120" width="150" height="150">
+          <g class="turn-arc" fill="none" stroke="#FF6B35" stroke-width="5" stroke-linecap="round">
+            <path d="M22 40 A44 44 0 0 1 72 14"></path><path d="M66 6 L74 14 L64 21"></path>
+            <path d="M98 80 A44 44 0 0 1 48 106"></path><path d="M54 114 L46 106 L56 99"></path>
+          </g>
+          <g class="turn-device">
+            <rect x="38" y="22" width="44" height="76" rx="7" fill="#13110F" stroke="#F5C518" stroke-width="5"></rect>
+            <rect x="44" y="30" width="32" height="60" rx="2" fill="#2A231D"></rect>
+            <circle cx="60" cy="52" r="7" fill="#FF6B35"></circle>
+            <rect x="53" y="62" width="14" height="16" rx="3" fill="#F5C518"></rect>
+            <rect x="55" y="93" width="10" height="2.5" rx="1.25" fill="#F5C518"></rect>
+          </g>
+        </svg>
+      </div>
+      <h1 class="turn-title" id="turn-title">TURN YOUR PHONE</h1>
+      <p class="turn-sub">The ring plays best sideways. Rotate to landscape and the fight fills your screen.</p>
+      <p class="turn-hint">Not turning? Switch off rotation lock first.</p>
+      <button class="btn-ghost" id="turn-skip">PLAY UPRIGHT</button>
+    </div>
+  </section>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
