@@ -34,7 +34,7 @@ const nameOf = (f) => f.data.firstName.toUpperCase();
 
 /**
  * @param g  what main.js lends the story: hud, isTouch, setupPair(a, b), startMatch(opts),
- *           setMode(m), setFocus(f), fighters (getter), match (getter), showModes()
+ *           setMode(m), setFocus(f), fighters (getter), match (getter), showModes(), view(path, route)
  */
 export function createStory(g) {
   let ch = null; // the chapter being played
@@ -114,6 +114,7 @@ export function createStory(g) {
     $('chapter-end').classList.add('hidden');
     g.setMode('story');
     $('story').classList.remove('hidden');
+    g.view('/story');
     renderMap();
     askToPersist();
   }
@@ -215,6 +216,7 @@ export function createStory(g) {
     ch = CHAPTERS.find((c) => c.n === n);
     if (!ch || !save.unlocked(n)) return;
     active = true;
+    g.view(`/story/chapter-${n}`, '/story/[chapter]');
     $('modes').classList.add('hidden');
     $('story').classList.add('hidden');
     $('chapter-end').classList.add('hidden');
@@ -473,6 +475,7 @@ export function createStory(g) {
   }
 
   function showChapterEnd(r, won, bonus, earned, stats) {
+    g.view(`/story/chapter-${ch.n}/result`, '/story/[chapter]/result');
     g.setMode('scene');
     g.setFocus('both');
     const how = r.method === 'DECISION'
