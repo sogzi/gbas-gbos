@@ -350,6 +350,26 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) setPause(true);
 });
 
+// ---------- phones held upright: ask for landscape ----------
+// A full-screen card on touch screens in portrait. Turning the phone hides it; PLAY UPRIGHT dismisses it
+// for this visit (Lagos Life still requires the game to play upright). A fight under the card pauses.
+const portrait = matchMedia('(orientation: portrait)');
+let turnSkipped = false;
+try { turnSkipped = sessionStorage.getItem('gbasgbos.turn') === 'skip'; } catch {}
+function checkTurn() {
+  const show = isTouch && portrait.matches && !turnSkipped;
+  $('turn').classList.toggle('hidden', !show);
+  if (show) setPause(true);
+}
+$('turn-skip').addEventListener('click', () => {
+  turnSkipped = true;
+  try { sessionStorage.setItem('gbasgbos.turn', 'skip'); } catch {}
+  checkTurn();
+});
+portrait.addEventListener?.('change', checkTurn);
+addEventListener('resize', checkTurn);
+checkTurn();
+
 // ---------- Lagos Life ----------
 // Inside Lagos Life: pause when it says so (phone backgrounded, pay sheet open), show who's playing,
 // and post the Street Rep this device already has. Outside it, connect() does nothing.
