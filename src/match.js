@@ -1,5 +1,5 @@
 // Match flow: round intro, fighting, knockdowns and the count, rest between rounds, the decision.
-import { RULES } from './data.js';
+import { RULES, PARRY, BODY, PIN } from './data.js';
 import { sfx } from './audio.js';
 
 const NEUTRAL_X = 2.4; // how far the standing fighter backs off during a count
@@ -89,6 +89,21 @@ export class Match {
     const dir = vel.clone().normalize();
     // Hotfix: a parried punch plays out exactly like a block, but costs nothing and gets answered
     const parried = d.isParrying;
+    // a timed parry: block pressed just before it landed turns any punch away (signatures too)
+    const timed = !parried && d.parryTiming;
+    if (timed) {
+      d.parry();
+      a.stagger(PARRY.stagger);
+      d.sig = Math.min(3, d.sig + 0.3);
+      d.body.impulse('head', hit.point, vel, 1.0);
+      sfx.block();
+      this.fx?.spawn(hit.point, dir, 'guard', 0.7);
+      this.hitStop = Math.max(this.hitStop, 0.06);
+      this.shake = Math.max(this.shake, 0.025);
+      this.hud.say('PARRY!', d === this.p1 ? 'P1' : 'CPU', 800);
+      this.hooks.parried?.(a, d, m);
+      return;
+    }
     const blocked = parried || hit.zone === 'guard' || (d.isBlocking && hit.zone === 'head' && m.kind !== 'uppercut');
     if (blocked) {
       const dmg = parried ? 0 : m.dmg * a.powerMul * m.chip * m.blockMul * d.defMul;
@@ -114,13 +129,22 @@ export class Match {
     }
     // a counter: caught while punching, or just after missing
     const counter = d.state === 'punch' || d.time - (d.whiffedAt ?? -9) < 0.6;
+    // the free shot after a parry
+    const parryCounter = a.countering;
+    if (parryCounter) a.counterUntil = -10;
     const body = hit.zone === 'body';
+    const wasTired = d.tired;
+    // a high guard only half covers a shot dug in under it: it still takes the wind, but doesn't stop you
+    const underGuard = body && m.body && d.isBlocking;
     if (body) {
       m = { ...m, react: 'HitBody' };
-      d.stamina = Math.max(0, d.stamina - 6 - m.dmg); // body shots take the legs and the wind
+      d.stamina = Math.max(0, d.stamina - 6 - m.dmg - (m.body ? BODY.drain : 0)); // body shots take the legs and the wind
     }
     const duckedIntoIt = d.state === 'duck' && m.kind === 'uppercut';
     let dmg = m.dmg * a.powerMul * m.dmgMul * d.defMul * (counter || duckedIntoIt ? a.data.counterMul ?? 1.25 : 1) * (body ? 0.85 : 1);
+    if (parryCounter) dmg *= PARRY.counterMul;
+    if (d.pinned) dmg *= PIN.dmgMul; // nowhere to roll with it on the ropes
+    if (underGuard) dmg *= BODY.guardDmg;
     // Quit Notice: catch someone under 15% health with it and the fight is over
     const evicted = m.sig === 'Quit Notice' && d.hp < 15;
     if (evicted) dmg = Math.max(dmg, d.hp);
@@ -135,7 +159,7 @@ export class Match {
     if (!m.sig) a.sig = Math.min(3, a.sig + 0.15);
     d.sig = Math.min(3, d.sig + 0.05);
     this.lastBlow = { by: a, sig: m.sig };
-    const res = d.takeHit(m, dmg, a);
+    const res = underGuard ? (d.hp = Math.max(1, d.hp - dmg), 'absorbed') : d.takeHit(m, dmg, a);
     // the head (or torso) is thrown by the glove: angular impulse from where and how it landed
     d.body.impulse(hit.zone, hit.point, vel, 3 + dmg * 0.75);
     sfx.punch(dmg / 6);
@@ -149,6 +173,8 @@ export class Match {
       this.hud.say(m.sig.toUpperCase() + '!', a.data.firstName.toUpperCase(), 1200);
     }
     else if (res === 'stun') this.hud.say('STUNNED!', '', 1200);
+    else if (parryCounter) this.hud.say('PARRY COUNTER!', isP1 ? 'P1' : 'CPU', 900);
+    else if (m.body && !wasTired && d.tired) this.hud.say('WINDED!', d === this.p1 ? 'P1' : 'CPU', 900);
     else if (counter && dmg > 4) this.hud.say('COUNTER!', isP1 ? 'P1' : 'CPU', 700);
     else if (a.combo >= 3) this.hud.say(`${a.combo} HIT COMBO`, isP1 ? 'P1' : 'CPU', 900);
 
@@ -205,9 +231,10 @@ export class Match {
     const cpuOut = this.cpu.update(dt);
     const auto = this.autoP1?.update(dt);
     if (this.phase === 'fight') {
-      if (auto) this._drive(p1, auto.move, auto.block, auto.presses);
-      else this._drive(p1, this.input.move, this.input.held.block, presses);
-      this._drive(p2, cpuOut.move, cpuOut.block, cpuOut.presses);
+      if (auto) this._drive(p1, auto.move, auto.block, auto.presses, auto.low);
+      else this._drive(p1, this.input.move, this.input.held.block, presses, this.input.held.down);
+      this._drive(p2, cpuOut.move, cpuOut.block, cpuOut.presses, cpuOut.low);
+      this._pins();
     } else {
       p1.moveIntent = p2.moveIntent = 0;
     }
@@ -306,15 +333,21 @@ export class Match {
     this.kick *= Math.exp(-dt * 12);
   }
 
-  _drive(f, move, block, presses) {
+  // `low`: duck held down, so jabs and hooks go to the body (and so does anything thrown out of a duck)
+  _drive(f, move, block, presses, low = false) {
     f.moveIntent = move;
     if (block && !f.blockHeld) f.startBlock();
     else if (!block && f.blockHeld) f.endBlock();
     else if (block && f.state === 'idle') f.startBlock();
     for (const p of presses) {
-      if (p === 'jab') f.punch('jab');
-      else if (p === 'hook') f.punch('hook');
+      const body = low || f.state === 'duck';
+      if (p === 'jab') f.punch('jab', { body });
+      else if (p === 'hook') f.punch('hook', { body });
+      else if (p === 'bodyjab') f.punch('jab', { body: true });
+      else if (p === 'bodyhook') f.punch('hook', { body: true });
       else if (p === 'upper') f.punch('uppercut');
+      else if (p === 'dashL') f.dash(-1);
+      else if (p === 'dashR') f.dash(1);
       else if (p === 'slip') f.slip();
       else if (p === 'duck') f.duck();
       else if (p === 'sig') {
@@ -323,6 +356,18 @@ export class Match {
         if (!name) f.punch('jab');
         // signatures that aren't a punch get their callout now
         else if (f.state !== 'punch') this.hud.say(name.toUpperCase() + '!', f.data.firstName.toUpperCase(), 1000);
+      }
+    }
+  }
+
+  // on the ropes: backed up to your own ropes with the opponent close
+  _pins() {
+    for (const [d, a] of [[this.p1, this.p2], [this.p2, this.p1]]) {
+      const was = d.pinned;
+      d.pinned = d.state !== 'down' && -d.facing * d.x > this.rules.ringHalf - PIN.edge && Math.abs(a.x - d.x) < PIN.gap;
+      if (d.pinned && !was && d.time - (d.pinnedSaidAt ?? -9) > 5) {
+        d.pinnedSaidAt = d.time;
+        this.hud.say('ON THE ROPES!', d === this.p1 ? 'P1' : 'CPU', 800);
       }
     }
   }

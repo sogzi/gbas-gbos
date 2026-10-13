@@ -25,6 +25,8 @@ New fighters get their `reach` by measuring glove contact, not by guessing: plac
 
 If a feature truly needs a physics change, say so and ask first.
 
+Lade approved one physics change on 13 Oct 2026, from the moves review: punches 25% faster (`PUNCH_SPEED` in `src/data.js`), plus dash and rope pinning. Their tuning lives in `PUNCH_SPEED`, `PARRY`, `BODY`, `DASH` and `PIN` in `src/data.js`. Everything else above stays locked.
+
 ## Locked: Quick Match v0.3 (Lade, 11 Oct 2026)
 
 "Lock this version. Its solid. Don't tamper with it." The snapshot is branch `release/v0.3-quick-match` (commit 7230fa0). New modes are built around Quick Match, not by changing it:
