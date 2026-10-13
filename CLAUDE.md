@@ -38,6 +38,11 @@ If a feature truly needs a physics change, say so and ask first.
 - District rings: `src/story/venues.js` dresses the street around the ring for each chapter (signs, sky, lights, props) through `createVenues(arena).dress(n)`. It changes looks only. Never move the ring, ropes, posts or floor there. `dress(0)` restores the exact Quick Match street, and Quick Match and Mode Select always call it.
 - The script was signed off by Lade from the "Gbas Gbos Story Mode: Draft Scripts" doc. Keep lines as written unless asked.
 
+## Fight Night look
+
+- `src/look/fightnight.js` is the game's look (Lade, 13 Oct 2026): night street, lighting rig, crowd, branded ring, sweat, glossy gloves, named trunks, bloom and grade. `?look=day` shows the original daylight look.
+- Looks only. It dresses the arena and the fighters' materials after they load and renders through its own composer. It never moves the ring, ropes, posts or floor, and never touches fight logic or physics.
+
 ## Lagos Life
 
 - `src/lagoslife.js` wraps the Vatar Games SDK (docs: https://lagoslife.app/developers/docs). It does nothing unless the page is framed, so direct visits never load it.

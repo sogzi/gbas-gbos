@@ -1,7 +1,7 @@
-// Fight Night: an opt-in look under review (open the game with ?look=night). The street at night, a
-// lighting rig over the ring, a Lagos crowd, a branded ring, fighters with sweat sheen, glossy gloves and
-// named trunks, and bloom with a film grade. Looks only: it never moves the ring, ropes, posts or floor,
-// and never touches fight logic or physics. Without ?look=night the game looks exactly as before.
+// Fight Night: the game's look. The street at night, a lighting rig over the ring, a Lagos crowd, a branded
+// ring, fighters with sweat sheen, glossy gloves and named trunks, and bloom with a film grade. Looks only:
+// it never moves the ring, ropes, posts or floor, and never touches fight logic or physics. Open the game
+// with ?look=day for the original daylight look.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -9,7 +9,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
-export const lookWanted = () => new URLSearchParams(location.search).get('look') === 'night';
+export const lookWanted = () => new URLSearchParams(location.search).get('look') !== 'day';
 
 const Y = -0.62; // street level
 const INK = '#13110F', YELLOW = '#F5C518', RED = '#FF6B35', BLUE = '#4C8DFF', CHALK = '#F4EEE3';
@@ -498,7 +498,8 @@ export function createFightNight({ arena, renderer, scene, camera }) {
   key.position.set(0.4, 7.2, 1.6);
   key.target.position.set(0, 0.6, 0);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  const touch = matchMedia('(pointer: coarse)').matches;
+  key.shadow.mapSize.set(touch ? 1024 : 2048, touch ? 1024 : 2048); // lighter on phones
   key.shadow.camera.near = 2;
   key.shadow.camera.far = 14;
   key.shadow.bias = -0.0003;
