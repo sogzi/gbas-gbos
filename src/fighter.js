@@ -1,6 +1,6 @@
 // A boxer: the 3D model, its animation mixer and the combat state machine.
 import * as THREE from 'three';
-import { MOVES, RULES } from './data.js';
+import { MOVES, RULES, PUNCH_SPEED, PARRY, BODY, DASH, PIN } from './data.js';
 import { sfx } from './audio.js';
 import { Body } from './physics.js';
 
@@ -74,6 +74,11 @@ export class Fighter {
     this.after = null; // a punch to throw when the current dodge ends (Express Lane)
     this.ironUntil = -1; // No Shaking: no hit-stun until this time
     this.moveIntent = 0;
+    this.blockPressedAt = -10;
+    this.parried = false;
+    this.counterUntil = -10; // after a parry: the next punch inside this time is a counter
+    this.dashReadyAt = 0;
+    this.pinned = false;
     this.lastMoveKind = null;
     this.lastMoveEnd = -10;
     this.root.position.set(this.x, 0, 0);
@@ -155,6 +160,11 @@ export class Fighter {
     return this.state === 'parry';
   }
 
+  // block pressed just before the punch arrives: it gets turned away (Match.resolve)
+  get parryTiming() {
+    return this.state === 'block' && this.time - this.blockPressedAt <= PARRY.window;
+  }
+
   get iron() {
     return this.time < this.ironUntil;
   }
@@ -163,14 +173,20 @@ export class Fighter {
     return this.state === 'idle' || this.state === 'block';
   }
 
+  get countering() {
+    return this.time < this.counterUntil;
+  }
+
   // ---------- commands ----------
   punch(kind, opts = {}) {
     if (this.state === 'punch' && !opts.force) {
       // buffer the next punch late in the current one so combos flow
-      if (this.stateT > this.move.dur * 0.45) this.buffered = kind;
+      if (this.stateT > this.move.dur * 0.45) this.buffered = { kind, opts };
       return false;
     }
-    if (!this.canAct && !opts.force) return false;
+    // duck and dig: a body shot can come straight out of a duck
+    const fromDuck = this.state === 'duck' && opts.body;
+    if (!this.canAct && !opts.force && !fromDuck) return false;
     const now = this.time;
     // a jab straight after a jab becomes the one-two (cross)
     if (kind === 'jab' && !opts.sig && this.lastMoveKind === 'jab' && now - this.lastMoveEnd < 0.35) kind = 'cross';
@@ -178,13 +194,14 @@ export class Fighter {
     const cost = opts.sig ? 0 : base.stam;
     if (!opts.sig && this.stamina < 3) return false;
     this.stamina = Math.max(0, this.stamina - cost);
-    let ts = (opts.timeScale ?? 1) * (this.tired ? 0.78 : 1);
+    let ts = (opts.timeScale ?? 1) * PUNCH_SPEED * (this.tired ? 0.78 : 1);
+    const body = !!opts.body && kind !== 'uppercut';
     const clip = opts.clip ?? base.clip;
     const dur = this.clipLen(clip) / ts;
     this.move = {
       kind, ...base, clip, dur, hitAt: base.hit * dur, done: false,
-      dmgMul: (opts.dmgMul ?? 1) * (this.tired ? 0.6 : 1), stun: opts.stun ?? 0, blockMul: opts.blockMul ?? 1,
-      sig: opts.sig ?? null, hand: base.hand,
+      dmgMul: (opts.dmgMul ?? 1) * (this.tired ? 0.6 : 1) * (body ? BODY.dmgMul : 1), stun: opts.stun ?? 0, blockMul: opts.blockMul ?? 1,
+      sig: opts.sig ?? null, hand: base.hand, body,
     };
     this.state = 'punch';
     this.stateT = 0;
@@ -192,8 +209,8 @@ export class Fighter {
     // step into the shot: straights carry the body forward, hooks and uppercuts rotate in place
     this.vx += this.facing * (kind === 'jab' || kind === 'cross' ? 0.55 : 0.25) * (opts.sig ? 1.2 : 1);
     // and lean the torso into it, which is where the last few centimetres of reach come from
-    this.body.nudge('torso', kind === 'uppercut' ? 0.8 : kind === 'hook' ? 2.0 : 3.4, 0, 0);
-    this.play(clip, { timeScale: ts, fade: 0.06 });
+    this.body.nudge('torso', body ? 4.2 : kind === 'uppercut' ? 0.8 : kind === 'hook' ? 2.0 : 3.4, 0, 0);
+    this.play(clip, { timeScale: ts, fade: fromDuck ? 0.1 : 0.06 });
     sfx.whoosh(ts);
     return true;
   }
@@ -265,6 +282,10 @@ export class Fighter {
   }
 
   startBlock() {
+    if (!this.blockHeld) {
+      this.blockPressedAt = this.time;
+      this.parried = false;
+    }
     this.blockHeld = true;
     if (this.state !== 'idle') return;
     this.state = 'block';
@@ -276,7 +297,33 @@ export class Fighter {
 
   endBlock() {
     this.blockHeld = false;
-    if (this.state === 'block') this.toIdle(0.12);
+    if (this.state !== 'block') return;
+    // a quick tap that parried nothing: caught reaching, briefly open
+    if (this.time - this.blockPressedAt < PARRY.missIfReleasedBy && !this.parried) {
+      this.state = 'open';
+      this.stateT = 0;
+      return;
+    }
+    this.toIdle(0.12);
+  }
+
+  // turned a punch away: the next shot inside the window is a counter
+  parry() {
+    this.parried = true;
+    this.counterUntil = this.time + PARRY.counterFor;
+  }
+
+  // a burst of footwork on a double-tap; dir is -1 (left) or +1 (right) on screen
+  dash(dir) {
+    if (!this.canAct || this.stamina < DASH.stamina || this.time < this.dashReadyAt) return false;
+    // pinned on the ropes: there's nowhere to go backwards
+    if (this.pinned && dir === -this.facing) return false;
+    this.stamina -= DASH.stamina;
+    this.dashReadyAt = this.time + DASH.cooldown;
+    this.vx += dir * DASH.speed * (0.9 + this.data.stats.speed * 0.02);
+    this.body.nudge('torso', dir * this.facing * 2.6, 0, 0);
+    sfx.whoosh(1.4);
+    return true;
   }
 
   slip({ free = false, timeScale = 1.15, dash = 0 } = {}) {
@@ -387,10 +434,10 @@ export class Fighter {
             const n = this.queue.shift();
             this.punch(n.kind, { ...n.opts, force: true });
           } else if (this.buffered) {
-            const k = this.buffered;
+            const b = this.buffered;
             this.buffered = null;
             this.state = 'idle';
-            if (!this.punch(k)) this.toIdle(0.1);
+            if (!this.punch(b.kind, b.opts)) this.toIdle(0.1);
           } else {
             this.toIdle(0.14);
           }
@@ -412,6 +459,9 @@ export class Fighter {
         break;
       case 'duck':
         if (this.stateT >= this.duckDur * 0.9) this.toIdle(0.12);
+        break;
+      case 'open':
+        if (this.stateT >= PARRY.missOpen) this.toIdle(0.1);
         break;
       case 'parry':
         if (this.blockAction && this.blockAction.time >= this.blockPeak) this.blockAction.paused = true;
@@ -461,13 +511,16 @@ export class Fighter {
 
     // stamina
     if (this.state !== 'punch' && this.state !== 'down') {
-      const k = this.state === 'block' ? 0.4 : moving ? 0.8 : 1;
+      const k = (this.state === 'block' ? 0.4 : moving ? 0.8 : 1) * (this.pinned ? PIN.regen : 1);
       this.stamina = Math.min(100, this.stamina + this.staminaRegen * k * dt);
     }
     if (this.iron) this.stamina = Math.min(100, this.stamina + 22 * dt);
     this.shownHp += (this.hp - this.shownHp) * Math.min(1, dt * 1.6);
 
     this.root.position.x = this.x;
+    // body shots dip at the knees on the way in
+    const m = this.state === 'punch' ? this.move : null;
+    this.root.position.y = m?.body ? -0.09 * Math.sin(Math.PI * Math.min(1, this.stateT / (m.dur * 0.8))) : 0;
     this.animate(dt);
   }
 
@@ -481,6 +534,8 @@ export class Fighter {
       // punches are thrown at the opponent's head: tracked until the fighter commits,
       // then locked, so a slip or a step back makes it miss
       const target = () => {
+        // body shots go to the middle of the torso
+        if (m.body) return this.opp.body.hipP.clone().lerp(this.opp.body.chestP, 0.55);
         const t = this.opp.body.headC.clone();
         if (m.kind === 'uppercut') t.y -= 0.07; // under the chin
         if (m.kind === 'hook') t.y -= 0.02;

@@ -1,11 +1,14 @@
 // Keyboard and touch input, turned into the same set of fight intents.
-//   intents: left/right held, block held, and one-shot presses jab / hook / upper / slip / duck / sig
+//   intents: left/right held, block held, duck held (`down`, turns jabs and hooks into body shots),
+//   and one-shot presses jab / hook / upper / slip / duck / sig / dashL / dashR (double-tap a direction)
+import { DASH } from './data.js';
 
 const SIG_WINDOW = 0.09; // seconds to wait for the second key of J + L
 
 export class Input {
   constructor() {
-    this.held = { left: false, right: false, block: false };
+    this.held = { left: false, right: false, block: false, down: false };
+    this.lastTap = { left: -10, right: -10 };
     this.presses = [];
     this.pendingJab = null;
     this.pendingUpper = null;
@@ -57,6 +60,21 @@ export class Input {
     this.pendingJab = this.pendingUpper = null;
   }
 
+  // a direction pressed (not held): two taps close together dash that way
+  _tapDir(k) {
+    const t = this._now();
+    if (t - this.lastTap[k] < DASH.doubleTap) {
+      this.presses.push(k === 'left' ? 'dashL' : 'dashR');
+      this.lastTap[k] = -10;
+    } else this.lastTap[k] = t;
+  }
+
+  // duck: one press ducks, and keeping it held makes the next jabs and hooks body shots
+  _down(on) {
+    if (on && !this.held.down) this._press('duck');
+    this.held.down = on;
+  }
+
   get move() {
     return (this.held.right ? 1 : 0) - (this.held.left ? 1 : 0);
   }
@@ -75,8 +93,13 @@ export class Input {
       const k = map[e.code];
       if (!k) return;
       e.preventDefault();
-      if (k in this.held) {
-        if (!this.held[k]) this.onAny?.(k);
+      if (k === 'duck') {
+        if (!e.repeat) this._down(true);
+      } else if (k in this.held) {
+        if (!this.held[k]) {
+          this.onAny?.(k);
+          if (k === 'left' || k === 'right') this._tapDir(k);
+        }
         this.held[k] = true;
       } else if (!e.repeat) {
         this._press(k);
@@ -84,7 +107,8 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => {
       const k = map[e.code];
-      if (k && k in this.held) this.held[k] = false;
+      if (k === 'duck') this.held.down = false;
+      else if (k && k in this.held) this.held[k] = false;
     });
     window.addEventListener('blur', () => {
       for (const k in this.held) this.held[k] = false;
@@ -103,7 +127,10 @@ export class Input {
       active.set(e.pointerId, { k, b });
       b.classList.add('down');
       if (navigator.vibrate) navigator.vibrate(8);
-      if (k in this.held) {
+      if (k === 'duck') {
+        this._down(true);
+      } else if (k in this.held) {
+        if ((k === 'left' || k === 'right') && !this.held[k]) this._tapDir(k);
         this.held[k] = true;
         this.onAny?.(k);
       } else {
@@ -115,10 +142,11 @@ export class Input {
       if (!a) return;
       active.delete(e.pointerId);
       a.b.classList.remove('down');
-      if (a.k in this.held) {
+      const hk = a.k === 'duck' ? 'down' : a.k;
+      if (hk in this.held) {
         // another finger may still hold the same key
         const still = [...active.values()].some((v) => v.k === a.k);
-        if (!still) this.held[a.k] = false;
+        if (!still) this.held[hk] = false;
       }
     };
     root.addEventListener('pointerdown', down);

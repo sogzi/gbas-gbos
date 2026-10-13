@@ -121,6 +121,20 @@ export const MOVES = {
   uppercut: { clip: 'Uppercut', hit: 0.50, dmg: 4.8, stam: 10, react: 'Hit',     chip: 0.4,  hand: 1 },
 };
 
+// Every punch plays this much faster than its clip (signatures too, keeping their own pace relative to it).
+export const PUNCH_SPEED = 1.25;
+
+// Moves review, tier 1 (Lade, 13 Oct 2026)
+export const PARRY = {
+  window: 0.15,  // block pressed this soon before the punch lands turns it away
+  stagger: 0.45, // the attacker is knocked off balance this long
+  counterFor: 0.9, counterMul: 1.5, // the parrier's next punch inside this window hits harder
+  missIfReleasedBy: 0.2, missOpen: 0.25, // a tap of block that parried nothing leaves you open this long
+};
+export const BODY = { dmgMul: 0.75, drain: 8, guardDmg: 0.5 }; // body shots: less damage, more stamina gone; a high guard only halves them
+export const DASH = { speed: 3.4, stamina: 8, cooldown: 0.45, doubleTap: 0.26 };
+export const PIN = { edge: 0.18, gap: 1.25, dmgMul: 1.2, regen: 0.5 }; // on the ropes: within `edge` of your own ropes with the opponent close
+
 export const RULES = {
   rounds: 3,
   roundSeconds: 60,     // quick match; the full game uses 3-minute rounds
