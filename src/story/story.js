@@ -212,6 +212,7 @@ export function createStory(g) {
   // ---------- a chapter ----------
   let playId = 0;
   async function play(n) {
+    if (g.needsName?.()) await g.ensureName(); // the Street Rep fight name, asked for once before the first fight
     const id = ++playId;
     ch = CHAPTERS.find((c) => c.n === n);
     if (!ch || !save.unlocked(n)) return;
@@ -510,6 +511,7 @@ export function createStory(g) {
     nb.textContent = won ? (last ? 'FINISH' : 'NEXT STOP') : 'RETRY';
     nb.onclick = () => (won ? (last ? showMap() : play(ch.n + 1)) : play(ch.n));
     $('ch-map').classList.toggle('hidden', won && last);
+    g.showGain?.($('ch-rank'));
     $('chapter-end').classList.remove('hidden');
   }
 
