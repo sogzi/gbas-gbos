@@ -59,6 +59,7 @@ Lade approved one physics change on 13 Oct 2026, from the moves review: punches 
 - The first fight (Quick Match or Story) asks for a fight name once; "Not now" skips it for the visit. The server returns a player id and secret key, kept in localStorage (`gbasgbos.player.v1`). The Player Code (`GGP1-<id>.<key>`) moves a player, and the copy of their Story save the server keeps, to another device.
 - Never trust the client for rep: the game reports what happened (win/loss/draw, method, round) against a one-use token from `op: 'start'`, and the server works out the rep, checks the fight lasted long enough, and rate-limits. Rep values live in `WIN` in `api/lb.js`.
 - Story's own chapter rep (`save.rep()`, the Lagos Life score) is separate from leaderboard rep.
+- A sample crowd (`api/_sample.js`, Lade 15 Oct 2026) goes on the boards once, the first time a board is read on a store (`seeded:v1`). Its players are marked `bot` and can't sign in; `op: 'unseed'` with the admin token takes them off.
 
 ## Checking things
 
