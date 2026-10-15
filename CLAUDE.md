@@ -52,6 +52,14 @@ Lade approved one physics change on 13 Oct 2026, from the moves review: punches 
 - Products live in `PRODUCTS` in `api/_vatar.js` and must match the dashboard's product ids. Today there is one: `naija-gloves`, a one-off, Story-only cosmetic. Quick Match never shows it. Ownership is remembered per Lagos Life player in localStorage (`gbasgbos.owned.v1`), because the API can't list what a player owns. It's cosmetic only, so nothing of value rests on that.
 - Lagos Life's review needs: play at 375×812 portrait by touch, honouring `onPause`/`onResume`, sound only after the first tap, no logins, no outside payments or ads.
 
+## Street Rep leaderboard
+
+- One shared board for every player, with no sign-up. Server: `api/lb.js` (one function, all actions) on Upstash Redis through `api/_store.js` (REST, no package). Client: `src/rank.js`.
+- Needs an Upstash Redis store connected to the Vercel project (it sets `KV_REST_API_URL`/`KV_REST_API_TOKEN`). Without it the API answers 503 `no_store` and fights just go unranked. Off Vercel, an in-memory store stands in for local tests. `LB_ADMIN_TOKEN` (optional) enables `op: 'remove'` to take a cheat off the boards.
+- The first fight (Quick Match or Story) asks for a fight name once; "Not now" skips it for the visit. The server returns a player id and secret key, kept in localStorage (`gbasgbos.player.v1`). The Player Code (`GGP1-<id>.<key>`) moves a player, and the copy of their Story save the server keeps, to another device.
+- Never trust the client for rep: the game reports what happened (win/loss/draw, method, round) against a one-use token from `op: 'start'`, and the server works out the rep, checks the fight lasted long enough, and rate-limits. Rep values live in `WIN` in `api/lb.js`.
+- Story's own chapter rep (`save.rep()`, the Lagos Life score) is separate from leaderboard rep.
+
 ## Checking things
 
 ```bash

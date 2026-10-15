@@ -16,6 +16,7 @@ import { createStory } from './story/story.js';
 import { lookWanted, createFightNight } from './look/fightnight.js';
 import { inject as injectAnalytics, pageview } from '@vercel/analytics';
 import { connect as connectLagosLife, submitScore, isOwned, lagosLife } from './lagoslife.js';
+import { initRank, ensureName, needsName, begin as beginRanked, finish as finishRanked, showGain, suggest as suggestName, syncStory, renderBar } from './rank.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -262,9 +263,16 @@ function showMenu() {
   renderPicks();
 }
 
+// the first fight asks for a fight name for the Street Rep board (once; "not now" skips it this visit)
+let naming = false;
 function startFight() {
-  if (!fighters || $('fight-btn').disabled) return;
-  startMatch();
+  if (!fighters || $('fight-btn').disabled || naming) return;
+  if (!needsName()) return startMatch();
+  naming = true;
+  ensureName().then(() => {
+    naming = false;
+    if (mode === 'menu' || mode === 'results') startMatch();
+  });
 }
 
 // shared by Quick Match and Story. Quick Match passes nothing, so it plays exactly as it always has;
@@ -280,7 +288,18 @@ function startMatch({ rules, hooks, level: lv, cpuTweak, onEnd } = {}) {
   hud.setNames(p1.data, p2.data);
   const cpu = new CPU(p2, p1, lv ?? level);
   cpuTweak?.(cpu);
-  match = new Match({ p1, p2, ref, cpu, input, hud, onEnd: onEnd ?? showResults, fx, arena, rules, hooks });
+  // Street Rep: tell the board a fight began, and report how it ended before the result screens show
+  beginRanked({
+    fighter: p1.data.id, opp: p2.data.storyId ?? p2.data.id, level: lv ?? level,
+    mode: story.active ? 'story' : 'quick', chapter: story.chapter,
+  });
+  const end = onEnd ?? showResults;
+  const done = (r) => {
+    finishRanked(r, p1);
+    end(r);
+    if (story.active) syncStory(story.save.exportCode());
+  };
+  match = new Match({ p1, p2, ref, cpu, input, hud, onEnd: done, fx, arena, rules, hooks });
   // ?autoplay lets the CPU box for P1 too (attract mode and automated tests)
   if (new URLSearchParams(location.search).has('autoplay')) match.autoP1 = new CPU(p1, p2, lv ?? level);
   match.start();
@@ -306,25 +325,27 @@ $('fight-btn').addEventListener('click', startFight);
 function showModes() {
   mode = 'modes';
   view('/');
-  for (const id of ['menu', 'story', 'results', 'pause', 'chapter-end', 'scene']) $(id).classList.add('hidden');
+  for (const id of ['menu', 'story', 'results', 'pause', 'chapter-end', 'scene', 'ranks']) $(id).classList.add('hidden');
   document.body.classList.remove('fighting');
   hud.show(false);
   $('touch').classList.add('hidden');
   $('modes').classList.remove('hidden');
   venues?.dress(0);
   story.renderModeCard();
+  renderBar();
   if (fighters) {
     placeForMenu();
     ref?.reset();
   }
 }
 
-$('mode-cpu').addEventListener('click', () => {
+function openQuickMatch() {
   $('modes').classList.add('hidden');
   showMenu();
   // coming back from Story, the ring still has Story's pair in it
   if (staged !== 'quick') setupFighters();
-});
+}
+$('mode-cpu').addEventListener('click', openQuickMatch);
 $('mode-story').addEventListener('click', () => {
   $('modes').classList.add('hidden');
   story.showMap();
@@ -352,6 +373,31 @@ const story = createStory({
   get fighters() { return fighters; },
   get match() { return match; },
   showModes,
+  needsName,
+  ensureName,
+  showGain,
+});
+
+// ---------- Street Rep leaderboard ----------
+initRank({
+  open() {
+    mode = 'ranks';
+    view('/leaderboard');
+    $('modes').classList.add('hidden');
+  },
+  back: showModes,
+  climb: openQuickMatch,
+  // a Player Code brings the Story save kept with it, unless this device is further along
+  importStory(code) {
+    const here = story.save.exportCode(), had = story.save.rep();
+    if (!story.save.importCode(code)) return false;
+    if (story.save.rep() < had) {
+      story.save.importCode(here);
+      return false;
+    }
+    story.renderModeCard();
+    return true;
+  },
 });
 
 // ---------- pause ----------
@@ -404,7 +450,7 @@ const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenEle
 if (!lagosLife.framed && !installed && (canFs || isIPhone)) {
   document.body.classList.add('fs-ok');
   const icon = (d) => `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5C518" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
-  for (const host of ['modes', 'story', 'menu', 'hud']) {
+  for (const host of ['modes', 'story', 'menu', 'hud', 'ranks']) {
     const b = document.createElement('button');
     b.className = 'fs-btn';
     b.setAttribute('aria-label', 'Full screen');
@@ -445,6 +491,7 @@ connectLagosLife({
   },
 }).then((player) => {
   if (!player) return;
+  suggestName(player.name);
   $('ll-name').textContent = player.name;
   if (player.avatar) $('ll-avatar').src = player.avatar;
   $('ll-chip').classList.remove('hidden');
@@ -496,6 +543,7 @@ function showResults(r) {
       <tr class="tot"><td>${r.method === 'TKO' ? 'T.K.O.' : 'K.O.'}</td><td>${w === p1 ? 'WIN' : ''}</td><td>${w === p2 ? 'WIN' : ''}</td></tr></table>`;
   }
   $('res-card').innerHTML = card;
+  showGain($('res-rep'));
   $('results').classList.remove('hidden');
 }
 $('rematch-btn').addEventListener('click', startFight);
@@ -504,7 +552,7 @@ $('menu-btn').addEventListener('click', showMenu);
 // ---------- camera and loop ----------
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(0, 1.6, 6);
-const ORBIT = new Set(['menu', 'modes', 'story']); // screens with the slow orbit behind them
+const ORBIT = new Set(['menu', 'modes', 'story', 'ranks']); // screens with the slow orbit behind them
 
 function updateCamera(dt) {
   let mid = 0, gap = 2;
