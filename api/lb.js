@@ -8,6 +8,7 @@
 //   POST /api/lb { op: 'me', id, key }                     your record and Story save (Player Code on a new device)
 //   POST /api/lb { op: 'story', id, key, code }            keep a copy of the Story save code
 //   POST /api/lb { op: 'remove', name }  + Authorization: Bearer $LB_ADMIN_TOKEN   take a cheat off the boards
+//   POST /api/lb { op: 'unseed' }        + Authorization: Bearer $LB_ADMIN_TOKEN   take the sample crowd off
 //
 // The game never says how much rep a fight is worth: it reports what happened and the server works the rep
 // out. Every result needs a fresh token from 'start', each token pays once, and a fight has to have taken
@@ -16,6 +17,7 @@
 import crypto from 'node:crypto';
 import { readRaw, send } from './_vatar.js';
 import { pipe, cmd } from './_store.js';
+import { SAMPLE, SAMPLE_PICKS, sampleId } from './_sample.js';
 
 const FIGHTERS = ['dayo', 'bisi', 'chief', 'emeka', 'femi', 'kola'];
 const OPPONENTS = [...FIGHTERS, 'tunde'];
@@ -92,9 +94,33 @@ async function standing(id, wk) {
   };
 }
 
+// ---------- the sample crowd (api/_sample.js), added once ----------
+let seedChecked = false; // per warm instance, so most reads skip the check
+async function seedOnce(wk) {
+  if (seedChecked) return;
+  seedChecked = true;
+  if (!(await cmd('SET', 'seeded:v1', wk, 'NX'))) return; // remembers the week it went on
+  const claims = await pipe(SAMPLE.map(([name]) => ['SET', `name:${name.toLowerCase()}`, sampleId(name), 'NX']));
+  const cmds = [];
+  SAMPLE.forEach(([name, main, w, l, ko, streak, rep], i) => {
+    if (!claims[i]) return; // a real player already fights under this name
+    const id = sampleId(name);
+    cmds.push(
+      ['HSET', `p:${id}`, 'name', name, 'bot', 1, 'created', Date.now(), 'main', main, `f:${main}`, w + l, 'w', w, 'l', l, 'd', 0, 'ko', ko, 'streak', streak, 'best', streak, 'rep', rep],
+      ['ZINCRBY', 'lb:all', rep, id],
+      ['ZINCRBY', `lb:w:${wk}`, rep, id],
+      ['ZINCRBY', `lb:f:${main}`, rep, id],
+    );
+  });
+  for (const [f, n] of Object.entries(SAMPLE_PICKS)) cmds.push(['HINCRBY', `picks:${wk}`, f, n]);
+  cmds.push(['EXPIRE', `lb:w:${wk}`, 60 * 86400], ['EXPIRE', `picks:${wk}`, 60 * 86400]);
+  await pipe(cmds);
+}
+
 // ---------- the board ----------
 async function board(q) {
   const wk = week();
+  await seedOnce(wk.key);
   const which = ['week', 'all', 'fighter'].includes(q.board) ? q.board : 'week';
   const fighter = FIGHTERS.includes(q.fighter) ? q.fighter : 'dayo';
   const zkey = which === 'week' ? `lb:w:${wk.key}` : which === 'all' ? 'lb:all' : `lb:f:${fighter}`;
@@ -233,10 +259,14 @@ async function story(body) {
   return { ok: true };
 }
 
-async function remove(body, req) {
+function isAdmin(req) {
   const admin = process.env.LB_ADMIN_TOKEN;
   const auth = String(req.headers.authorization || '');
   if (!admin || auth.length !== admin.length + 7 || !crypto.timingSafeEqual(Buffer.from(auth), Buffer.from(`Bearer ${admin}`))) throw fail(403, 'forbidden');
+}
+
+async function remove(body, req) {
+  isAdmin(req);
   const id = typeof body.name === 'string' ? await cmd('GET', `name:${body.name.toLowerCase()}`) : null;
   if (!id) throw fail(404, 'not_found');
   const wk = week().key;
@@ -249,7 +279,23 @@ async function remove(body, req) {
   return { removed: body.name };
 }
 
-const OPS = { register, rename, start, result, me, story, remove };
+// take the whole sample crowd off every board (it isn't added again)
+async function unseed(body, req) {
+  isAdmin(req);
+  const wk = (await cmd('GET', 'seeded:v1')) || week().key;
+  const owners = await pipe(SAMPLE.map(([name]) => ['GET', `name:${name.toLowerCase()}`]));
+  const cmds = [];
+  SAMPLE.forEach(([name, main], i) => {
+    const id = sampleId(name);
+    cmds.push(['DEL', `p:${id}`], ['ZREM', 'lb:all', id], ['ZREM', `lb:w:${wk}`, id], ['ZREM', `lb:f:${main}`, id]);
+    if (owners[i] === id) cmds.push(['DEL', `name:${name.toLowerCase()}`]);
+  });
+  for (const [f, n] of Object.entries(SAMPLE_PICKS)) cmds.push(['HINCRBY', `picks:${wk}`, f, -n]);
+  await pipe(cmds);
+  return { removed: SAMPLE.length };
+}
+
+const OPS = { register, rename, start, result, me, story, remove, unseed };
 
 // the itch.io build runs on itch's own domain and calls this one
 function cors(req, res) {
