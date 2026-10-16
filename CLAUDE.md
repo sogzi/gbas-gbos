@@ -51,6 +51,7 @@ Lade approved one physics change on 13 Oct 2026, from the moves review: punches 
 - Never trust the client for anything of value. Purchases (and any future cloud save or reward) must be verified by a server holding the `vtr_test_…`/`vtr_live_…` secret, via `POST /session/verify` and `GET /purchases/{id}`. Never put a secret in `src/`.
 - Products live in `PRODUCTS` in `api/_vatar.js` and must match the dashboard's product ids. Today there is one: `naija-gloves`, a one-off, Story-only cosmetic. Quick Match never shows it. Ownership is remembered per Lagos Life player in localStorage (`gbasgbos.owned.v1`), because the API can't list what a player owns. It's cosmetic only, so nothing of value rests on that.
 - Other portals frame the game too. CrazyGames (`*.crazygames.com` and its app origins) is in `frame-ancestors` in `vercel.json`, and the SDK isn't loaded when the parent is visibly not Lagos Life.
+- Inside CrazyGames, saves go through their SDK's Data module instead of localStorage (`src/store.js`), because CrazyGames requires it for iframe games. The entry point `src/start.js` waits for it before loading `main.js`. Read and write saves through `store`, never `localStorage` directly, and add any new save key to `KEYS` there.
 - Lagos Life's review needs: play at 375×812 portrait by touch, honouring `onPause`/`onResume`, sound only after the first tap, no logins, no outside payments or ads.
 
 ## Street Rep leaderboard

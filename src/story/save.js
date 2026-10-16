@@ -1,9 +1,11 @@
 // Story progress, saved on this device only (no sign-up or server yet).
-// One small JSON record in localStorage. A save code (copy/paste text) moves it between devices.
+// One small JSON record in the save store (src/store.js: localStorage, or CrazyGames' Data module there).
+// A save code (copy/paste text) moves it between devices.
 // When Lagos Life links, this record is uploaded once and the server takes over; rewards that matter
 // (₦, real Street Rep) will only ever come from the server, never from this file.
 
 import { CHAPTERS } from './chapters.js';
+import { store } from '../store.js';
 
 const KEY = 'gbasgbos.story.v1';
 const VERSION = 1;
@@ -15,7 +17,7 @@ let memoryOnly = false; // private mode or blocked storage: progress lasts for t
 
 function read() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = store.getItem(KEY);
     if (!raw) return fresh();
     return migrate(JSON.parse(raw));
   } catch {
@@ -35,7 +37,7 @@ let state = read();
 function write() {
   state.updated = Date.now();
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    store.setItem(KEY, JSON.stringify(state));
     memoryOnly = false;
   } catch {
     memoryOnly = true;
