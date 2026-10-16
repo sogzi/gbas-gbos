@@ -16,6 +16,21 @@ const framed = (() => {
   }
 })();
 
+// Other portals frame us too (CrazyGames). Only load the SDK when the parent could be Lagos Life: a parent we
+// can see that isn't Lagos Life skips it. When the browser hides the parent (no ancestorOrigins, no
+// referrer), load it as before and let init fail.
+const LAGOS_LIFE = /^https:\/\/(www\.)?(lagoslife|naijalife)\.app$|^https:\/\/lagoslife\.eliysites\.com$/;
+const parentOrigin = (() => {
+  try {
+    const a = location.ancestorOrigins;
+    if (a?.length) return a[0];
+    return document.referrer ? new URL(document.referrer).origin : '';
+  } catch {
+    return '';
+  }
+})();
+const elsewhere = framed && !!parentOrigin && !LAGOS_LIFE.test(parentOrigin);
+
 const state = { framed, player: null, mode: null, error: null };
 let ready = null;
 let lastScore = 0;
@@ -83,7 +98,7 @@ function loadSdk() {
 // onPause/onResume are wired before init so a pay sheet or backgrounding is never missed.
 export function connect({ onPause, onResume } = {}) {
   if (ready) return ready;
-  if (!framed) return (ready = Promise.resolve(null));
+  if (!framed || elsewhere) return (ready = Promise.resolve(null));
   ready = (async () => {
     try {
       const V = await loadSdk();
