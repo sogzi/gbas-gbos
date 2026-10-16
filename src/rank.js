@@ -1,12 +1,14 @@
 // Street Rep: the shared leaderboard (server: api/lb.js).
 //
 // No sign-up. The first time someone fights, they pick a fight name; the server hands back a player id and
-// a secret key, kept in localStorage with their last known record so the board shows something offline.
+// a secret key, kept in the save store (src/store.js) with their last known record so the board shows
+// something offline.
 // The Player Code (id + key) moves a player, and the copy of their Story save the server keeps, to
 // another device. Fights are reported as what happened (win, method, round); the server works out the rep.
 // Nothing here ever blocks a fight: if the server can't be reached, the fight just isn't counted.
 
 import { FIGHTERS, ROSTER } from './data.js';
+import { store } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 const API = `${import.meta.env.VITE_API_BASE ?? ''}/api/lb`;
@@ -23,10 +25,10 @@ const NAME = /^[A-Za-z0-9_]{3,16}$/;
 
 // ---------- this device's player ----------
 function readJSON(k, fallback) {
-  try { return JSON.parse(localStorage.getItem(k)) ?? fallback; } catch { return fallback; }
+  try { return JSON.parse(store.getItem(k)) ?? fallback; } catch { return fallback; }
 }
 function writeJSON(k, v) {
-  try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
+  try { store.setItem(k, JSON.stringify(v)); } catch {}
 }
 
 let me = readJSON(KEY, null);
@@ -308,7 +310,7 @@ export function initRank(h) {
   if (me) call({ op: 'me', id: me.id, key: me.key }).then((r) => { remember(r); renderBar(); }, (e) => {
     if (e.code !== 'bad_key') return;
     me = null;
-    try { localStorage.removeItem(KEY); } catch {}
+    try { store.removeItem(KEY); } catch {}
     renderBar();
   });
   $('rank-open').addEventListener('click', openBoard);
